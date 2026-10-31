@@ -141,7 +141,7 @@ PlasmoidItem {
         onNewData: (source, data) => { if (data["stdout"]) root.parse(data["stdout"]) }
     }
 
-    Plasmoid.icon: "plasmetrics"
+    Plasmoid.icon: Qt.resolvedUrl("../icons/plasmetrics.png")
     toolTipMainText: "System"
     toolTipSubText: "CPU " + Math.round(cpu * 100) + "%  ·  RAM " + Math.round(memUsed / memTotal * 100) + "%"
 

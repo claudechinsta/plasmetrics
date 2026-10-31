@@ -1,5 +1,11 @@
 # Changes
 
+## 1.0.1
+
+- Widget ID is now `io.github.claudechinsta.plasmetrics`. Remove the 1.0.0 widget from your panel and add this one
+- The icon is bundled in the package, so it shows for everyone
+- About page now lists the author, repository and bug tracker
+
 ## 1.0.0
 
 First release.

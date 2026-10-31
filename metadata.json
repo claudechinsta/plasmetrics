@@ -1,14 +1,20 @@
 {
     "KPackageStructure": "Plasma/Applet",
     "KPlugin": {
-        "Id": "org.local.plasmetrics",
+        "Id": "io.github.claudechinsta.plasmetrics",
         "Name": "Plasmetrics",
-        "Description": "Compact CPU, memory, network, disk and temperature monitor",
-        "Icon": "plasmetrics",
-        "Authors": [{ "Name": "claudechinsta" }],
+        "Description": "Your system's vital signs in the panel: CPU, memory, network, temperature and disk as tidy bars, with live graphs one click away.",
+        "Icon": "/icons/plasmetrics.png",
+        "Authors": [
+            {
+                "Name": "Chinsta"
+            }
+        ],
         "Category": "System Information",
         "License": "GPL-2.0-or-later",
-        "Version": "1.0.0"
+        "Version": "1.0.1",
+        "Website": "https://github.com/claudechinsta/plasmetrics",
+        "BugReportUrl": "https://github.com/claudechinsta/plasmetrics/issues"
     },
     "X-Plasma-API-Minimum-Version": "6.0"
 }

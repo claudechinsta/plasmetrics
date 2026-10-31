@@ -28,13 +28,6 @@ cd plasmetrics
 kpackagetool6 -t Plasma/Applet --install .
 ```
 
-For the icon, copy it into your icon theme:
-
-```bash
-mkdir -p ~/.local/share/icons/hicolor/256x256/apps
-magick assets/plasmetrics.png -resize 256x256 ~/.local/share/icons/hicolor/256x256/apps/plasmetrics.png
-```
-
 Then right-click the panel, choose Add Widgets, and search for "Plasmetrics". Update later with `--upgrade` instead of `--install`.
 
 Temperature needs a `k10temp`, `coretemp`, `zenpower` or `cpu_thermal` sensor (`lm_sensors`).
