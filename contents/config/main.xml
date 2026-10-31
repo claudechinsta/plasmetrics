@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+
+  <group name="General">
+    <entry name="updateInterval" type="Int"><default>2000</default></entry>
+    <entry name="barStyle" type="Int"><default>0</default></entry>
+    <entry name="showDisk" type="Bool"><default>true</default></entry>
+    <entry name="showUptime" type="Bool"><default>true</default></entry>
+    <entry name="tempFahrenheit" type="Bool"><default>false</default></entry>
+    <entry name="topProcesses" type="Int"><default>3</default></entry>
+  </group>
+
+  <group name="Metrics">
+    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,disk</default></entry>
+    <entry name="showCpu" type="Bool"><default>true</default></entry>
+    <entry name="cpuLabel" type="Bool"><default>true</default></entry>
+    <entry name="cpuDisplay" type="Int"><default>2</default></entry>
+    <entry name="cpuColor" type="String"><default>#4da3ff</default></entry>
+    <entry name="showMem" type="Bool"><default>true</default></entry>
+    <entry name="memLabel" type="Bool"><default>true</default></entry>
+    <entry name="memDisplay" type="Int"><default>2</default></entry>
+    <entry name="memColor" type="String"><default>#4cd964</default></entry>
+    <entry name="showNet" type="Bool"><default>true</default></entry>
+    <entry name="netLabel" type="Bool"><default>true</default></entry>
+    <entry name="netDisplay" type="Int"><default>2</default></entry>
+    <entry name="downColor" type="String"><default>#ff9f0a</default></entry>
+    <entry name="upColor" type="String"><default>#ff453a</default></entry>
+    <entry name="showTemp" type="Bool"><default>true</default></entry>
+    <entry name="tempLabel" type="Bool"><default>true</default></entry>
+    <entry name="tempDisplay" type="Int"><default>2</default></entry>
+    <entry name="tempColor" type="String"><default>#ff6482</default></entry>
+    <entry name="showDiskPanel" type="Bool"><default>true</default></entry>
+    <entry name="diskMount" type="String"><default>/</default></entry>
+    <entry name="diskLabel" type="Bool"><default>true</default></entry>
+    <entry name="diskDisplay" type="Int"><default>2</default></entry>
+    <entry name="diskColor" type="String"><default>#bf5af2</default></entry>
+  </group>
+
+  <group name="Appearance">
+    <entry name="useCustomFont" type="Bool"><default>false</default></entry>
+    <entry name="fontFamily" type="String"><default></default></entry>
+    <entry name="panelFontSize" type="Int"><default>12</default></entry>
+    <entry name="popupFontSize" type="Int"><default>10</default></entry>
+    <entry name="fontBold" type="Bool"><default>true</default></entry>
+  </group>
+</kcfg>
