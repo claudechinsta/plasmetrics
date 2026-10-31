@@ -1,0 +1,23 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build package
+        run: zip -r "plasmetrics-${GITHUB_REF_NAME}.plasmoid" metadata.json contents LICENSE
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v v="$version" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' CHANGES.md)
+          gh release create "$GITHUB_REF_NAME" "plasmetrics-${GITHUB_REF_NAME}.plasmoid" --title "Plasmetrics $version" --notes "$notes"

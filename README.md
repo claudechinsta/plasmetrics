@@ -14,7 +14,13 @@ Shows CPU, memory, network, temperature and disk usage in the panel as label, ba
 
 ## Install
 
-Requires Plasma 6.
+Requires Plasma 6. Download `plasmetrics-*.plasmoid` from the [Releases](https://github.com/claudechinsta/plasmetrics/releases) page and install it with:
+
+```bash
+kpackagetool6 -t Plasma/Applet --install plasmetrics-*.plasmoid
+```
+
+Or from source:
 
 ```bash
 git clone git@github.com:claudechinsta/plasmetrics.git
