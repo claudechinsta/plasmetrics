@@ -20,6 +20,10 @@ PlasmoidItem {
     property real diskUsed: 0
     property real diskTotal: 1
     property real temp: -1
+    property real batLevel: -1
+    property real batVolts: 0
+    property real batWatts: 0
+    property string batStatus: ""
     property string load: ""
     property int uptime: 0
     property var tops: []
@@ -28,10 +32,14 @@ PlasmoidItem {
     property var rxHist: Array(60).fill(0)
     property var txHist: Array(60).fill(0)
     property var tempHist: Array(60).fill(0)
+    property var batHist: Array(60).fill(0)
     property var diskHist: Array(60).fill(0)
     property real peakRate: 1024 * 100
+    property var cores: []
+    property var prevCores: null
     property var prevCpu: null
     property var prevNet: null
+    property string netIface: ""
     property double prevNetT: 0
 
     readonly property var cfg: Plasmoid.configuration
@@ -41,7 +49,7 @@ PlasmoidItem {
     readonly property string script: Qt.resolvedUrl("../code/stats.sh").toString().replace("file://", "")
 
     readonly property var order: {
-        var keys = ["cpu", "mem", "net", "temp", "disk"], out = []
+        var keys = ["cpu", "mem", "net", "temp", "bat", "disk"], out = []
         cfg.metricOrder.split(",").forEach(function (k) { if (keys.indexOf(k) >= 0 && out.indexOf(k) < 0) out.push(k) })
         keys.forEach(function (k) { if (out.indexOf(k) < 0) out.push(k) })
         return out
@@ -53,21 +61,25 @@ PlasmoidItem {
         switch (key) {
         case "cpu":
             return { on: cfg.showCpu, label: "CPU", showLabel: cfg.cpuLabel, display: cfg.cpuDisplay, text: pct(cpu), scale: 1,
-                     frac: cpu, frac2: -1, hist: cpuHist, hist2: null, col: cfg.cpuColor, col2: "#000000" }
+                     frac: cpu, frac2: -1, chart: cfg.cpuChart, hist: cpuHist, hist2: null, col: cfg.cpuColor, col2: "#000000" }
         case "mem":
             return { on: cfg.showMem, label: "MEM", showLabel: cfg.memLabel, display: cfg.memDisplay, text: pct(memUsed / memTotal), scale: 1,
-                     frac: memUsed / memTotal, frac2: -1, hist: memHist, hist2: null, col: cfg.memColor, col2: "#000000" }
+                     frac: memUsed / memTotal, frac2: -1, chart: cfg.barStyle, hist: memHist, hist2: null, col: cfg.memColor, col2: "#000000" }
         case "net":
             return { on: cfg.showNet, label: "NET", showLabel: cfg.netLabel, display: cfg.netDisplay,
                      text: "↓ " + fmtRate(rxRate) + "\n↑ " + fmtRate(txRate), scale: 0.8,
-                     frac: rxRate / peakRate, frac2: txRate / peakRate, hist: rxHist, hist2: txHist,
+                     frac: rxRate / peakRate, frac2: txRate / peakRate, chart: cfg.barStyle, hist: rxHist, hist2: txHist,
                      col: cfg.downColor, col2: cfg.upColor }
         case "temp":
             return { on: cfg.showTemp && temp >= 0, label: "TEMP", showLabel: cfg.tempLabel, display: cfg.tempDisplay, text: fmtTemp(temp), scale: 1,
-                     frac: temp / 100, frac2: -1, hist: tempHist, hist2: null, col: cfg.tempColor, col2: "#000000" }
+                     frac: temp / 100, frac2: -1, chart: cfg.barStyle, hist: tempHist, hist2: null, col: cfg.tempColor, col2: "#000000" }
+        case "bat":
+            return { on: cfg.showBat && batLevel >= 0, label: "BAT", showLabel: cfg.batLabel, display: cfg.batDisplay,
+                     text: cfg.batValue === 1 ? fmtWatts(batWatts) : cfg.batValue === 2 ? fmtVolts(batVolts) : Math.round(batLevel) + "%", scale: 1,
+                     frac: batLevel / 100, frac2: -1, chart: cfg.barStyle, hist: batHist, hist2: null, col: cfg.batColor, col2: "#000000" }
         default:
             return { on: cfg.showDiskPanel, label: "DISK", showLabel: cfg.diskLabel, display: cfg.diskDisplay, text: pct(diskUsed / diskTotal), scale: 1,
-                     frac: diskUsed / diskTotal, frac2: -1, hist: diskHist, hist2: null, col: cfg.diskColor, col2: "#000000" }
+                     frac: diskUsed / diskTotal, frac2: -1, chart: cfg.barStyle, hist: diskHist, hist2: null, col: cfg.diskColor, col2: "#000000" }
         }
     }
 
@@ -83,6 +95,8 @@ PlasmoidItem {
     function fmtTemp(c) {
         return cfg.tempFahrenheit ? Math.round(c * 9 / 5 + 32) + "°F" : Math.round(c) + "°C"
     }
+    function fmtWatts(w) { return w < 0 ? "–" : w.toFixed(1) + " W" }
+    function fmtVolts(v) { return v < 0 ? "–" : v.toFixed(2) + " V" }
     function fmtUp(s) {
         var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60)
         return (d ? d + "d " : "") + h + "h " + m + "m"
@@ -103,12 +117,24 @@ PlasmoidItem {
                     cpu = 1 - (idle - prevCpu[1]) / (tot - prevCpu[0])
                 prevCpu = [tot, idle]
                 break
+            case "cores":
+                var cur = []
+                for (var k = 1; k + 2 < p.length; k += 3) cur.push([+p[k + 1], +p[k + 2]])
+                if (prevCores && prevCores.length === cur.length)
+                    cores = cur.map(function (c, i) {
+                        var dt = c[0] - prevCores[i][0]
+                        return dt > 0 ? 1 - (c[1] - prevCores[i][1]) / dt : 0
+                    })
+                prevCores = cur
+                break
             case "mem":
                 memTotal = p[1] * 1024; memUsed = (p[1] - p[2]) * 1024
                 swapTotal = p[3] * 1024; swapUsed = (p[3] - p[4]) * 1024
                 break
             case "net":
                 var rx = +p[1], tx = +p[2]
+                // The automatic choice follows the default route, so the counters can change under us
+                if (p[3] !== netIface) { prevNet = null; netIface = p[3] }
                 if (prevNet && now > prevNetT) {
                     var dt = (now - prevNetT) / 1000
                     rxRate = Math.max(0, (rx - prevNet[0]) / dt)
@@ -120,6 +146,9 @@ PlasmoidItem {
             case "load": load = p[1] + "  " + p[2] + "  " + p[3]; break
             case "up": uptime = +p[1]; break
             case "temp": temp = p[1] / 1000; break
+            case "bat":
+                batLevel = +p[1]; batVolts = p[2] / 1e6; batWatts = p[3] / 1e6; batStatus = p.slice(4).join(" ")
+                break
             case "top": t.push({ cpu: p[1], name: p.slice(2).join(" ") }); break
             }
         })
@@ -130,15 +159,23 @@ PlasmoidItem {
         rxHist = push(rxHist, rxRate / peakRate)
         txHist = push(txHist, txRate / peakRate)
         tempHist = push(tempHist, Math.max(0, temp) / 100)
+        batHist = push(batHist, Math.max(0, batLevel) / 100)
         diskHist = push(diskHist, diskUsed / diskTotal)
     }
 
     P5Support.DataSource {
         id: exec
         engine: "executable"
-        connectedSources: ["sh '" + root.script + "' '" + root.cfg.diskMount.replace(/'/g, "'\\''") + "'"]
+        connectedSources: ["sh '" + root.script + "' '" + root.cfg.diskMount.replace(/'/g, "'\\''") + "' '" + root.cfg.tempSensor.replace(/'/g, "'\\''")
+                          + "' '" + root.cfg.batDevice.replace(/'/g, "'\\''") + "' '" + root.cfg.netInterface.replace(/'/g, "'\\''") + "'"]
         interval: root.cfg.updateInterval
         onNewData: (source, data) => { if (data["stdout"]) root.parse(data["stdout"]) }
+    }
+
+    // A different interface has different counters, so drop the previous sample
+    Connections {
+        target: root.cfg
+        function onNetInterfaceChanged() { root.prevNet = null; root.rxRate = 0; root.txRate = 0 }
     }
 
     Plasmoid.icon: Qt.resolvedUrl("../icons/plasmetrics.png")
@@ -158,6 +195,8 @@ PlasmoidItem {
             property real frac: 0
             property real frac2: -1
             property var hist
+            property int chart: 0
+            property var cores: []
             property var hist2: null
             property color col: "#4da3ff"
             property color col2: "#ff453a"
@@ -166,27 +205,39 @@ PlasmoidItem {
             property int display: 2
             spacing: 4
 
-            Text {
+            Item {
                 visible: parent.showLabel
-                text: label
-                color: Kirigami.Theme.textColor
-                opacity: 0.65
-                font.family: root.fontFam
-                font.pixelSize: Math.max(6, root.px * 0.8)
-                font.bold: true
+                implicitWidth: root.cfg.verticalLabels ? labelText.implicitHeight : labelText.implicitWidth
+                implicitHeight: root.cfg.verticalLabels ? labelText.implicitWidth : labelText.implicitHeight
+                Text {
+                    id: labelText
+                    anchors.centerIn: parent
+                    rotation: root.cfg.verticalLabels ? -90 : 0
+                    text: label
+                    color: Kirigami.Theme.textColor
+                    opacity: 0.65
+                    font.family: root.fontFam
+                    font.pixelSize: Math.max(6, root.px * 0.8)
+                    font.bold: true
+                }
             }
             VBar {
-                visible: parent.display !== 1 && root.cfg.barStyle === 0
+                visible: parent.display !== 1 && [0, 3, 4].indexOf(parent.chart) >= 0
                 Layout.preferredHeight: Math.round(root.px * 1.8)
                 frac: parent.frac; frac2: parent.frac2
                 color: parent.col; color2: parent.col2
             }
             MiniChart {
-                visible: parent.display !== 1 && root.cfg.barStyle === 1
+                visible: parent.display !== 1 && [1, 4].indexOf(parent.chart) >= 0
                 Layout.preferredWidth: 38
                 Layout.preferredHeight: Math.round(root.px * 1.8)
                 values: parent.hist; values2: parent.hist2
                 color: parent.col; color2: parent.col2
+            }
+            CoreGrid {
+                visible: parent.display !== 1 && [2, 3, 4].indexOf(parent.chart) >= 0
+                Layout.preferredHeight: Math.round(root.px * 1.8)
+                values: parent.cores
             }
             Text {
                 visible: parent.display !== 0
@@ -210,6 +261,7 @@ PlasmoidItem {
                     visible: d.on
                     showLabel: d.showLabel; display: d.display
                     label: d.label; valueText: d.text; valueScale: d.scale
+                    chart: d.chart; cores: modelData === "cpu" ? root.cores : []
                     frac: d.frac; frac2: d.frac2; hist: d.hist; hist2: d.hist2
                     col: d.col; col2: d.col2
                 }
@@ -271,6 +323,16 @@ PlasmoidItem {
                     values: root.txHist
                     color: root.cfg.upColor
                 }
+            }
+            Section {
+                visible: root.batLevel >= 0
+                title: "Battery"
+                accent: root.cfg.batColor
+                fontFamily: root.fontFam
+                baseSize: root.cfg.popupFontSize
+                value: Math.round(root.batLevel) + "%"
+                history: root.batHist
+                subtitle: root.fmtWatts(root.batWatts) + "      " + root.fmtVolts(root.batVolts) + "      " + root.batStatus
             }
             Section {
                 visible: root.cfg.showDisk

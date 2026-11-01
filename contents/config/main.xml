@@ -14,10 +14,11 @@
   </group>
 
   <group name="Metrics">
-    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,disk</default></entry>
+    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,disk,bat</default></entry>
     <entry name="showCpu" type="Bool"><default>true</default></entry>
     <entry name="cpuLabel" type="Bool"><default>true</default></entry>
     <entry name="cpuDisplay" type="Int"><default>2</default></entry>
+    <entry name="cpuChart" type="Int"><default>0</default></entry>
     <entry name="cpuColor" type="String"><default>#4da3ff</default></entry>
     <entry name="showMem" type="Bool"><default>true</default></entry>
     <entry name="memLabel" type="Bool"><default>true</default></entry>
@@ -26,12 +27,20 @@
     <entry name="showNet" type="Bool"><default>true</default></entry>
     <entry name="netLabel" type="Bool"><default>true</default></entry>
     <entry name="netDisplay" type="Int"><default>2</default></entry>
+    <entry name="netInterface" type="String"><default></default></entry>
     <entry name="downColor" type="String"><default>#ff9f0a</default></entry>
     <entry name="upColor" type="String"><default>#ff453a</default></entry>
     <entry name="showTemp" type="Bool"><default>true</default></entry>
     <entry name="tempLabel" type="Bool"><default>true</default></entry>
     <entry name="tempDisplay" type="Int"><default>2</default></entry>
+    <entry name="tempSensor" type="String"><default></default></entry>
     <entry name="tempColor" type="String"><default>#ff6482</default></entry>
+    <entry name="showBat" type="Bool"><default>true</default></entry>
+    <entry name="batLabel" type="Bool"><default>true</default></entry>
+    <entry name="batDisplay" type="Int"><default>2</default></entry>
+    <entry name="batValue" type="Int"><default>0</default></entry>
+    <entry name="batDevice" type="String"><default></default></entry>
+    <entry name="batColor" type="String"><default>#30d158</default></entry>
     <entry name="showDiskPanel" type="Bool"><default>true</default></entry>
     <entry name="diskMount" type="String"><default>/</default></entry>
     <entry name="diskLabel" type="Bool"><default>true</default></entry>
@@ -44,6 +53,7 @@
     <entry name="fontFamily" type="String"><default></default></entry>
     <entry name="panelFontSize" type="Int"><default>12</default></entry>
     <entry name="popupFontSize" type="Int"><default>10</default></entry>
+    <entry name="verticalLabels" type="Bool"><default>true</default></entry>
     <entry name="fontBold" type="Bool"><default>true</default></entry>
   </group>
 </kcfg>
