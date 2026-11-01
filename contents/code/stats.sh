@@ -6,7 +6,12 @@ awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}/SwapTotal/{st=$2}/SwapFree/{sf=$2}END{
 # or every interface except lo when there is no default route
 iface=$4
 [ -z "$iface" ] && iface=$(awk 'NR>1 && $2=="00000000" && (m=="" || $7+0<m){m=$7+0; n=$1}END{print n}' /proc/net/route)
-awk -F'[: ]+' -v i="$iface" 'NR>2 && (i=="" ? $2!="lo" : $2==i){rx+=$3; tx+=$11}END{print "net", rx+0, tx+0, (i==""?"-":i)}' /proc/net/dev
+# Names up to 6 chars are space padded, longer ones (wlp2s0, enp5s0) are not, so split on the colon
+awk -v i="$iface" 'NR>2 {
+  c = index($0, ":"); name = substr($0, 1, c - 1); gsub(/ /, "", name)
+  split(substr($0, c + 1), f, " ")
+  if (i == "" ? name != "lo" : name == i) { rx += f[1]; tx += f[9] }
+}END{print "net", rx+0, tx+0, (i==""?"-":i)}' /proc/net/dev
 df -B1 --output=used,size "${1:-/}" 2>/dev/null | awk 'NR==2{print "disk", $1, $2}'
 awk '{print "load", $1, $2, $3}' /proc/loadavg
 awk '{print "up", int($1)}' /proc/uptime

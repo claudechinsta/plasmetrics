@@ -1,5 +1,9 @@
 # Changes
 
+## 1.1.1
+
+- Fixed the network metric stuck at 0 KB/s on systems whose interface is named like `wlp2s0` or `enp5s0`
+
 ## 1.1.0
 
 - New battery metric: level, wattage and voltage. The panel shows one of them (your choice), the popup card shows all three plus charge status. Hidden on machines without a battery
