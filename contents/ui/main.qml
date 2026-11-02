@@ -5,6 +5,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.kirigami as Kirigami
+import "ClockZones.js" as Zones
 
 PlasmoidItem {
     id: root
@@ -24,6 +25,11 @@ PlasmoidItem {
     property real batVolts: 0
     property real batWatts: 0
     property string batStatus: ""
+    readonly property string batCharging: batStatus === "Charging" ? "⚡" : ""
+    property double clockNow: Date.now()
+    property var clockOffsets: ({})
+    property real clockLocal: 0
+    readonly property var clockZones: Zones.parse(cfg.clockZones)
     property string load: ""
     property int uptime: 0
     property var tops: []
@@ -33,6 +39,8 @@ PlasmoidItem {
     property var txHist: Array(60).fill(0)
     property var tempHist: Array(60).fill(0)
     property var batHist: Array(60).fill(0)
+    property var batWattHist: Array(60).fill(-1)
+    property var batVoltHist: Array(60).fill(-1)
     property var diskHist: Array(60).fill(0)
     property real peakRate: 1024 * 100
     property var cores: []
@@ -46,10 +54,11 @@ PlasmoidItem {
     readonly property string fontFam: cfg.useCustomFont && cfg.fontFamily !== "" ? cfg.fontFamily : Kirigami.Theme.defaultFont.family
     readonly property int px: cfg.panelFontSize
 
+    readonly property string clockScript: Qt.resolvedUrl("../code/clock.sh").toString().replace("file://", "")
     readonly property string script: Qt.resolvedUrl("../code/stats.sh").toString().replace("file://", "")
 
     readonly property var order: {
-        var keys = ["cpu", "mem", "net", "temp", "bat", "disk"], out = []
+        var keys = ["cpu", "mem", "net", "temp", "bat", "clock", "disk"], out = []
         cfg.metricOrder.split(",").forEach(function (k) { if (keys.indexOf(k) >= 0 && out.indexOf(k) < 0) out.push(k) })
         keys.forEach(function (k) { if (out.indexOf(k) < 0) out.push(k) })
         return out
@@ -73,9 +82,12 @@ PlasmoidItem {
         case "temp":
             return { on: cfg.showTemp && temp >= 0, label: "TEMP", showLabel: cfg.tempLabel, display: cfg.tempDisplay, text: fmtTemp(temp), scale: 1,
                      frac: temp / 100, frac2: -1, chart: cfg.barStyle, hist: tempHist, hist2: null, col: cfg.tempColor, col2: "#000000" }
+        case "clock":
+            return { on: false, label: "", showLabel: false, display: 1, text: "", scale: 1,
+                     frac: 0, frac2: -1, chart: 0, hist: null, hist2: null, col: "#000000", col2: "#000000" }
         case "bat":
             return { on: cfg.showBat && batLevel >= 0, label: "BAT", showLabel: cfg.batLabel, display: cfg.batDisplay,
-                     text: cfg.batValue === 1 ? fmtWatts(batWatts) : cfg.batValue === 2 ? fmtVolts(batVolts) : Math.round(batLevel) + "%", scale: 1,
+                     text: (cfg.batValue === 1 ? fmtWatts(batWatts) : cfg.batValue === 2 ? fmtVolts(batVolts) : Math.round(batLevel) + "%") + batCharging, scale: 1,
                      frac: batLevel / 100, frac2: -1, chart: cfg.barStyle, hist: batHist, hist2: null, col: cfg.batColor, col2: "#000000" }
         default:
             return { on: cfg.showDiskPanel, label: "DISK", showLabel: cfg.diskLabel, display: cfg.diskDisplay, text: pct(diskUsed / diskTotal), scale: 1,
@@ -97,6 +109,29 @@ PlasmoidItem {
     }
     function fmtWatts(w) { return w < 0 ? "–" : w.toFixed(1) + " W" }
     function fmtVolts(v) { return v < 0 ? "–" : v.toFixed(2) + " V" }
+    // Same thresholds as the panel core grid
+    function usageColor(f) { return f < 0.2 ? "#30d158" : f < 0.7 ? "#ff9f0a" : "#ff453a" }
+    // "09:41 (-5h)" for a zone, "–" until its offset is known
+    function clockText(tz, withOffset) {
+        var off = clockOffsets[tz]
+        if (off === undefined || isNaN(clockLocal)) return "–"
+        var t = Zones.clock(clockNow, off, cfg.clock24)
+        return withOffset ? t + " (" + Zones.hours(off - clockLocal) + ")" : t
+    }
+    function clockOffsetText(tz) {
+        var off = clockOffsets[tz]
+        return off === undefined || isNaN(clockLocal) ? "" : "(" + Zones.hours(off - clockLocal) + ")"
+    }
+    function parseClock(out) {
+        var offs = {}
+        out.split("\n").forEach(function (line) {
+            var p = line.trim().split(/\s+/)
+            if (p.length !== 2) return
+            if (p[0] === "local") clockLocal = Zones.offsetSeconds(p[1])
+            else offs[p[0]] = Zones.offsetSeconds(p[1])
+        })
+        clockOffsets = offs
+    }
     function fmtUp(s) {
         var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60)
         return (d ? d + "d " : "") + h + "h " + m + "m"
@@ -160,7 +195,26 @@ PlasmoidItem {
         txHist = push(txHist, txRate / peakRate)
         tempHist = push(tempHist, Math.max(0, temp) / 100)
         batHist = push(batHist, Math.max(0, batLevel) / 100)
+        batWattHist = push(batWattHist, batLevel >= 0 ? batWatts : -1)
+        batVoltHist = push(batVoltHist, batLevel >= 0 ? batVolts : -1)
         diskHist = push(diskHist, diskUsed / diskTotal)
+    }
+
+    Timer {
+        interval: 5000
+        running: root.cfg.showClock && root.clockZones.length > 0
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.clockNow = Date.now()
+    }
+
+    // Offsets change only with daylight saving, so look them up rarely
+    P5Support.DataSource {
+        engine: "executable"
+        connectedSources: root.cfg.showClock && root.clockZones.length > 0
+            ? ["sh '" + root.clockScript + "' '" + root.clockZones.map(function (z) { return z.tz }).join(",") + "'"] : []
+        interval: 300000
+        onNewData: (source, data) => { if (data["stdout"]) root.parseClock(data["stdout"]) }
     }
 
     P5Support.DataSource {
@@ -250,20 +304,68 @@ PlasmoidItem {
             }
         }
 
+        // World clock: each zone is a vertical code on the left, then "09:41 (-5h)" on one line
+        component ClockRows: RowLayout {
+            id: clockRows
+            spacing: Kirigami.Units.largeSpacing
+            Repeater {
+                model: root.clockZones
+                RowLayout {
+                    spacing: 4
+                    Item {
+                        readonly property bool upright: Zones.hasEmoji(modelData.code)
+                        implicitWidth: upright ? codeText.implicitWidth : codeText.implicitHeight
+                        implicitHeight: upright ? codeText.implicitHeight : codeText.implicitWidth
+                        Text {
+                            id: codeText
+                            anchors.centerIn: parent
+                            rotation: parent.upright ? 0 : -90
+                            text: modelData.code
+                            color: Kirigami.Theme.textColor
+                            opacity: parent.upright ? 1 : 0.65
+                            font.family: root.fontFam
+                            font.pixelSize: Math.max(6, root.px * (parent.upright ? 1.1 : 0.8))   // letters match the other labels
+                            font.bold: !parent.upright
+                        }
+                    }
+                    Text {
+                        text: root.clockText(modelData.tz, false)
+                        color: Kirigami.Theme.textColor
+                        font.family: root.fontFam
+                        font.pixelSize: root.px * 1.1
+                        font.weight: root.cfg.fontBold ? Font.DemiBold : Font.Normal
+                    }
+                    Text {
+                        text: root.clockOffsetText(modelData.tz)
+                        Layout.alignment: Qt.AlignBaseline
+                        color: Kirigami.Theme.textColor
+                        opacity: 0.65
+                        font.family: root.fontFam
+                        font.pixelSize: Math.max(6, root.px * 0.7)
+                    }
+                }
+            }
+        }
+
         RowLayout {
             id: strip
             anchors.centerIn: parent
             spacing: Kirigami.Units.largeSpacing
             Repeater {
                 model: root.order
-                Metric {
+                RowLayout {
+                    spacing: 0
+                    visible: modelData === "clock" ? root.cfg.showClock && root.clockZones.length > 0 : d.on
                     readonly property var d: root.metricData(modelData)
-                    visible: d.on
-                    showLabel: d.showLabel; display: d.display
-                    label: d.label; valueText: d.text; valueScale: d.scale
-                    chart: d.chart; cores: modelData === "cpu" ? root.cores : []
-                    frac: d.frac; frac2: d.frac2; hist: d.hist; hist2: d.hist2
-                    col: d.col; col2: d.col2
+                    Metric {
+                        visible: modelData !== "clock"
+                        showLabel: d.showLabel; display: d.display
+                        label: d.label; valueText: d.text; valueScale: d.scale
+                        chart: d.chart; cores: modelData === "cpu" ? root.cores : []
+                        frac: d.frac; frac2: d.frac2; hist: d.hist; hist2: d.hist2
+                        col: d.col; col2: d.col2
+                    }
+                    ClockRows { visible: modelData === "clock" }
                 }
             }
         }
@@ -290,6 +392,47 @@ PlasmoidItem {
                 value: Math.round(root.cpu * 100) + "%"
                 history: root.cpuHist
                 subtitle: "Load  " + root.load + (root.temp >= 0 ? "      Temp  " + root.fmtTemp(root.temp) : "")
+                // Per core / thread: 4 equal fixed-width cells per row, bar + percentage
+                GridLayout {
+                    id: coreGrid
+                    visible: root.cores.length > 0
+                    Layout.fillWidth: true
+                    columns: 4
+                    columnSpacing: Kirigami.Units.smallSpacing * 2
+                    rowSpacing: 3
+                    // From the popup width (card margins removed), not this grid's own width, which depends on the cells
+                    readonly property real cellW: Math.max(0, (stack.width - Kirigami.Units.smallSpacing * 3 - columnSpacing * (columns - 1)) / columns)
+                    TextMetrics { id: pctWidth; text: "100%"; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.8 }
+                    Repeater {
+                        model: root.cores
+                        RowLayout {
+                            Layout.preferredWidth: coreGrid.cellW
+                            Layout.minimumWidth: coreGrid.cellW
+                            Layout.maximumWidth: coreGrid.cellW
+                            spacing: 4
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 6
+                                radius: 3
+                                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
+                                Rectangle {
+                                    width: parent.width * Math.min(1, Math.max(0, modelData))
+                                    height: parent.height
+                                    radius: 3
+                                    color: root.usageColor(modelData)
+                                }
+                            }
+                            Text {
+                                Layout.preferredWidth: pctWidth.width
+                                horizontalAlignment: Text.AlignRight
+                                text: Math.round(modelData * 100) + "%"
+                                color: Kirigami.Theme.textColor
+                                font.family: root.fontFam
+                                font.pointSize: root.cfg.popupFontSize * 0.8
+                            }
+                        }
+                    }
+                }
                 Repeater {
                     model: root.tops.slice(0, root.cfg.topProcesses)
                     RowLayout {
@@ -330,9 +473,60 @@ PlasmoidItem {
                 accent: root.cfg.batColor
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
-                value: Math.round(root.batLevel) + "%"
-                history: root.batHist
-                subtitle: root.fmtWatts(root.batWatts) + "      " + root.fmtVolts(root.batVolts) + "      " + root.batStatus
+                value: Math.round(root.batLevel) + "%" + root.batCharging
+                subtitle: root.batStatus
+                LineChart {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 44
+                    values: root.batWattHist
+                    values2: root.batVoltHist
+                    color: "#ff9f0a"
+                    color2: "#64d2ff"
+                    min1: 5
+                    min2: 1
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+                    Repeater {
+                        model: [
+                            { name: "Wattage", value: root.fmtWatts(root.batWatts), col: "#ff9f0a" },
+                            { name: "Voltage", value: root.fmtVolts(root.batVolts), col: "#64d2ff" }
+                        ]
+                        RowLayout {
+                            spacing: 4
+                            Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 3; radius: 1.5; color: modelData.col }
+                            Text {
+                                text: modelData.name + "  " + modelData.value
+                                color: Kirigami.Theme.textColor
+                                font.family: root.fontFam
+                                font.pointSize: root.cfg.popupFontSize * 0.85
+                            }
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
+                }
+            }
+            Section {
+                visible: root.cfg.showClock && root.clockZones.length > 0
+                title: "World clock"
+                accent: root.cfg.clockColor
+                fontFamily: root.fontFam
+                baseSize: root.cfg.popupFontSize
+                value: ""
+                Repeater {
+                    model: root.clockZones
+                    RowLayout {
+                        Layout.fillWidth: true
+                        readonly property real off: root.clockOffsets[modelData.tz] === undefined ? NaN : root.clockOffsets[modelData.tz]
+                        readonly property int day: isNaN(off) ? 0 : Zones.dayShift(root.clockNow, off, root.clockLocal)
+                        Text { text: modelData.code; Layout.preferredWidth: 34; font.bold: true; color: Kirigami.Theme.textColor; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.9 }
+                        Text { text: Zones.city(modelData.tz); Layout.fillWidth: true; elide: Text.ElideRight; color: Kirigami.Theme.textColor; opacity: 0.7; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.85 }
+                        Text { visible: parent.day !== 0; text: parent.day > 0 ? "+1 day" : "−1 day"; color: Kirigami.Theme.textColor; opacity: 0.5; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.75 }
+                        Text { text: root.clockText(modelData.tz, false); color: Kirigami.Theme.textColor; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.95; font.weight: Font.DemiBold }
+                        Text { text: isNaN(parent.off) ? "" : "(" + Zones.hours(parent.off - root.clockLocal) + ")"; Layout.preferredWidth: 52; horizontalAlignment: Text.AlignRight; color: Kirigami.Theme.textColor; opacity: 0.6; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.85 }
+                    }
+                }
             }
             Section {
                 visible: root.cfg.showDisk

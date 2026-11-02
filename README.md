@@ -2,7 +2,7 @@
 
 A compact system monitor widget for the KDE Plasma 6 panel, inspired by iStat Menus.
 
-Shows CPU, memory, network, temperature, battery and disk usage in the panel as label, bar and value, with a detailed popup (history graphs, load, top processes, uptime) when clicked.
+Shows CPU, memory, network, temperature, battery, world clock and disk usage in the panel as label, bar and value, with a detailed popup (history graphs, load, top processes, uptime) when clicked.
 
 ## Features
 

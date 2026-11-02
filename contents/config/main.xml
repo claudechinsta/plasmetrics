@@ -14,7 +14,7 @@
   </group>
 
   <group name="Metrics">
-    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,disk,bat</default></entry>
+    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,disk,bat,clock</default></entry>
     <entry name="showCpu" type="Bool"><default>true</default></entry>
     <entry name="cpuLabel" type="Bool"><default>true</default></entry>
     <entry name="cpuDisplay" type="Int"><default>2</default></entry>
@@ -41,6 +41,10 @@
     <entry name="batValue" type="Int"><default>0</default></entry>
     <entry name="batDevice" type="String"><default></default></entry>
     <entry name="batColor" type="String"><default>#30d158</default></entry>
+    <entry name="showClock" type="Bool"><default>true</default></entry>
+    <entry name="clockZones" type="String"><default></default></entry>
+    <entry name="clockColor" type="String"><default>#64d2ff</default></entry>
+    <entry name="clock24" type="Bool"><default>true</default></entry>
     <entry name="showDiskPanel" type="Bool"><default>true</default></entry>
     <entry name="diskMount" type="String"><default>/</default></entry>
     <entry name="diskLabel" type="Bool"><default>true</default></entry>

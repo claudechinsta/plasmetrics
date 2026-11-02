@@ -3,7 +3,7 @@
     "KPlugin": {
         "Id": "io.github.claudechinsta.plasmetrics",
         "Name": "Plasmetrics",
-        "Description": "Your system's vital signs in the panel: CPU, memory, network, temperature, battery and disk as tidy bars, with live graphs one click away.",
+        "Description": "Your system's vital signs in the panel: CPU, memory, network, temperature, battery, world clock and disk as tidy bars, with live graphs one click away.",
         "Icon": "/icons/plasmetrics.png",
         "Authors": [
             {
@@ -14,7 +14,7 @@
         ],
         "Category": "System Information",
         "License": "GPL-2.0-or-later",
-        "Version": "1.1.1",
+        "Version": "1.2.0",
         "Website": "https://github.com/claudechinsta/plasmetrics",
         "BugReportUrl": "https://github.com/claudechinsta/plasmetrics/issues"
     },

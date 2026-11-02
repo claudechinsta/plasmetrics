@@ -1,5 +1,12 @@
 # Changes
 
+## 1.2.0
+
+- New world clock metric: add as many time zones as you like. Each shows a vertical code (up to 3 characters, emoji allowed, editable), the local time and the hour difference to you, for example `09:41 (-5h)`. 12 or 24-hour time. Also a card in the popup with the city, time and "+1 day" markers
+- CPU card in the popup shows usage for every core and thread: 4 equal columns, a bar and a percentage each, colored green, orange or red by load
+- Battery card in the popup draws wattage and voltage as two lines with a colored legend
+- A ⚡ follows the battery value while charging
+
 ## 1.1.1
 
 - Fixed the network metric stuck at 0 KB/s on systems whose interface is named like `wlp2s0` or `enp5s0`

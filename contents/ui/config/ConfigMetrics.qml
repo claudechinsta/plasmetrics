@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kcmutils as KCM
 import org.kde.plasma.plasma5support as P5Support
+import "../ClockZones.js" as Zones
 
 KCM.SimpleKCM {
     id: page
@@ -38,6 +39,9 @@ KCM.SimpleKCM {
     property alias cfg_batValue: batValue.currentIndex
     property string cfg_batDevice
     property alias cfg_batColor: batColorBox.colorString
+    property bool cfg_showClock
+    property string cfg_clockZones
+    property alias cfg_clock24: clock24.checked
     property bool cfg_showDiskPanel
     property alias cfg_diskLabel: diskLabel.checked
     property alias cfg_diskDisplay: diskDisplay.currentIndex
@@ -69,15 +73,40 @@ KCM.SimpleKCM {
     property int cfg_batValueDefault
     property string cfg_batDeviceDefault
     property string cfg_batColorDefault
+    property bool cfg_showClockDefault
+    property string cfg_clockZonesDefault
+    property bool cfg_clock24Default
     property bool cfg_showDiskPanelDefault
     property bool cfg_diskLabelDefault
     property int cfg_diskDisplayDefault
     property string cfg_diskColorDefault
 
-    readonly property var keys: ["cpu", "mem", "net", "temp", "bat", "disk"]
-    readonly property var titles: ({ cpu: i18n("CPU"), mem: i18n("Memory"), net: i18n("Network"), temp: i18n("Temperature"), bat: i18n("Battery"), disk: i18n("Disk") })
+    readonly property var keys: ["cpu", "mem", "net", "temp", "bat", "clock", "disk"]
+    readonly property var titles: ({ cpu: i18n("CPU"), mem: i18n("Memory"), net: i18n("Network"), temp: i18n("Temperature"), bat: i18n("Battery"), clock: i18n("World clock"), disk: i18n("Disk") })
     property string selected: "cpu"
     property var mounts: []
+    readonly property var zones: Zones.parse(cfg_clockZones)
+    property var allZones: []
+    property var zoneResults: []
+
+    function searchZones(query) {
+        var q = query.trim().toLowerCase().replace(/ /g, "_")
+        if (q === "") { zoneResults = []; return }
+        zoneResults = allZones.filter(function (z) { return z.toLowerCase().indexOf(q) >= 0 }).slice(0, 8)
+    }
+    function addZone(tz) {
+        if (zones.some(function (z) { return z.tz === tz })) return
+        cfg_clockZones = Zones.join(zones.concat([{ tz: tz, code: Zones.defaultCode(tz) }]))
+    }
+    function removeZone(i) {
+        var z = zones.slice(); z.splice(i, 1)
+        cfg_clockZones = Zones.join(z)
+    }
+    function setCode(i, code) {
+        var z = zones.slice()
+        z[i] = { tz: z[i].tz, code: Zones.cleanCode(code) || Zones.defaultCode(z[i].tz) }
+        cfg_clockZones = Zones.join(z)
+    }
     property var batteries: [{ key: "", text: i18n("System battery (automatic)") }]
     property var interfaces: [{ key: "", text: i18n("Default route (automatic)") }]
     property var sensors: [{ key: "", text: i18n("CPU (automatic)") }]
@@ -97,6 +126,7 @@ KCM.SimpleKCM {
         case "net": return cfg_showNet
         case "temp": return cfg_showTemp
         case "bat": return cfg_showBat
+        case "clock": return cfg_showClock
         default: return cfg_showDiskPanel
         }
     }
@@ -107,6 +137,7 @@ KCM.SimpleKCM {
         case "net": cfg_showNet = v; break
         case "temp": cfg_showTemp = v; break
         case "bat": cfg_showBat = v; break
+        case "clock": cfg_showClock = v; break
         default: cfg_showDiskPanel = v
         }
     }
@@ -128,6 +159,15 @@ KCM.SimpleKCM {
                 if (m) list.push({ path: m[1], text: m[1] + "  (" + (m[2] / 1e9).toFixed(0) + " GB)" })
             })
             mounts = list
+            disconnectSource(source)
+        }
+    }
+
+    P5Support.DataSource {
+        engine: "executable"
+        connectedSources: ["timedatectl list-timezones 2>/dev/null || (cd /usr/share/zoneinfo && find . -type f | sed 's|^\\./||' | grep '^[A-Z]' | sort)"]
+        onNewData: (source, data) => {
+            allZones = (data["stdout"] || "").split("\n").map(function (l) { return l.trim() }).filter(function (l) { return l !== "" })
             disconnectSource(source)
         }
     }
@@ -327,6 +367,57 @@ KCM.SimpleKCM {
                     onActivated: (i) => page.cfg_batDevice = page.batteries[i].key
                 }
                 PaletteBox { id: batColorBox; Kirigami.FormData.label: i18n("Color:") }
+            }
+
+            Kirigami.FormLayout {
+                Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("World clock") }
+                QQC2.CheckBox { id: clock24; Kirigami.FormData.label: i18n("Format:"); text: i18n("24-hour time") }
+                ColumnLayout {
+                    Kirigami.FormData.label: i18n("Zones:")
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+                    spacing: Kirigami.Units.smallSpacing
+                    QQC2.Label {
+                        visible: page.zones.length === 0
+                        text: i18n("No zones yet. Search below to add one.")
+                        opacity: 0.6
+                    }
+                    Repeater {
+                        model: page.zones
+                        RowLayout {
+                            Layout.fillWidth: true
+                            QQC2.TextField {
+                                Layout.preferredWidth: Kirigami.Units.gridUnit * 3.5
+                                text: modelData.code
+                                // Any characters, emoji included, up to 3
+                                onTextEdited: { var a = Array.from(text); if (a.length > 3) text = a.slice(0, 3).join("") }
+                                onEditingFinished: { page.setCode(index, text); text = Zones.cleanCode(text) }
+                            }
+                            QQC2.Label { text: modelData.tz; elide: Text.ElideRight; Layout.fillWidth: true }
+                            QQC2.Button {
+                                icon.name: "list-remove"
+                                text: i18n("Remove")
+                                display: QQC2.AbstractButton.IconOnly
+                                onClicked: page.removeZone(index)
+                                QQC2.ToolTip.text: text
+                                QQC2.ToolTip.visible: hovered
+                            }
+                        }
+                    }
+                    Kirigami.SearchField {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                        placeholderText: i18n("Add a zone, e.g. Tokyo…")
+                        onTextChanged: page.searchZones(text)
+                    }
+                    Repeater {
+                        model: page.zoneResults
+                        QQC2.ItemDelegate {
+                            Layout.fillWidth: true
+                            text: modelData
+                            onClicked: page.addZone(modelData)
+                        }
+                    }
+                }
             }
 
             Kirigami.FormLayout {
