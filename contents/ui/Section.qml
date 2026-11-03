@@ -16,14 +16,14 @@ Rectangle {
     default property alias extra: extraCol.data
 
     Layout.fillWidth: true
-    implicitHeight: col.implicitHeight + Kirigami.Units.smallSpacing * 3
-    radius: Kirigami.Units.cornerRadius
-    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.07)
+    implicitHeight: col.implicitHeight + Kirigami.Units.largeSpacing * 2
+    radius: 0
+    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
 
     ColumnLayout {
         id: col
-        anchors { fill: parent; margins: Kirigami.Units.smallSpacing * 1.5 }
-        spacing: 2
+        anchors { fill: parent; margins: Kirigami.Units.largeSpacing }
+        spacing: 4
 
         RowLayout {
             Layout.fillWidth: true

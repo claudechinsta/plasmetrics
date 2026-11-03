@@ -9,6 +9,8 @@ KCM.SimpleKCM {
     property alias cfg_barStyle: barStyle.currentIndex
     property alias cfg_showDisk: showDisk.checked
     property alias cfg_showUptime: showUptime.checked
+    property alias cfg_showExternalIp: showExternalIp.checked
+    property alias cfg_showSysInfo: showSysInfo.checked
     property alias cfg_tempFahrenheit: fahrenheit.checked
     property alias cfg_topProcesses: topProcs.value
 
@@ -16,6 +18,8 @@ KCM.SimpleKCM {
     property int cfg_barStyleDefault
     property bool cfg_showDiskDefault
     property bool cfg_showUptimeDefault
+    property bool cfg_showExternalIpDefault
+    property bool cfg_showSysInfoDefault
     property bool cfg_tempFahrenheitDefault
     property int cfg_topProcessesDefault
 
@@ -40,6 +44,8 @@ KCM.SimpleKCM {
         Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Popup") }
         QQC2.CheckBox { id: showDisk; Kirigami.FormData.label: i18n("Show:"); text: i18n("Disk card") }
         QQC2.CheckBox { id: showUptime; text: i18n("Uptime") }
+        QQC2.CheckBox { id: showExternalIp; text: i18n("Public IP (looks it up on api.ipify.org)") }
+        QQC2.CheckBox { id: showSysInfo; text: i18n("System info") }
         QQC2.SpinBox {
             id: topProcs
             Kirigami.FormData.label: i18n("Top processes:")

@@ -14,7 +14,7 @@
         ],
         "Category": "System Information",
         "License": "GPL-2.0-or-later",
-        "Version": "1.2.0",
+        "Version": "1.2.1",
         "Website": "https://github.com/claudechinsta/plasmetrics",
         "BugReportUrl": "https://github.com/claudechinsta/plasmetrics/issues"
     },

@@ -16,10 +16,12 @@ KCM.SimpleKCM {
     property bool cfg_showCpu
     property alias cfg_cpuLabel: cpuLabel.checked
     property alias cfg_cpuDisplay: cpuDisplay.currentIndex
+    property alias cfg_cpuValue: cpuValue.currentIndex
     property alias cfg_cpuChart: cpuChart.currentIndex
     property alias cfg_cpuColor: cpuColorBox.colorString
     property bool cfg_showMem
     property alias cfg_memLabel: memLabel.checked
+    property alias cfg_memValue: memValue.currentIndex
     property alias cfg_memDisplay: memDisplay.currentIndex
     property alias cfg_memColor: memColorBox.colorString
     property bool cfg_showNet
@@ -50,10 +52,12 @@ KCM.SimpleKCM {
     property bool cfg_showCpuDefault
     property bool cfg_cpuLabelDefault
     property int cfg_cpuDisplayDefault
+    property int cfg_cpuValueDefault
     property int cfg_cpuChartDefault
     property string cfg_cpuColorDefault
     property bool cfg_showMemDefault
     property bool cfg_memLabelDefault
+    property int cfg_memValueDefault
     property int cfg_memDisplayDefault
     property string cfg_memColorDefault
     property bool cfg_showNetDefault
@@ -87,12 +91,16 @@ KCM.SimpleKCM {
     property var mounts: []
     readonly property var zones: Zones.parse(cfg_clockZones)
     property var allZones: []
+    property var zoneCountries: ({})
     property var zoneResults: []
 
     function searchZones(query) {
         var q = query.trim().toLowerCase().replace(/ /g, "_")
         if (q === "") { zoneResults = []; return }
-        zoneResults = allZones.filter(function (z) { return z.toLowerCase().indexOf(q) >= 0 }).slice(0, 8)
+        var qc = query.trim().toLowerCase()
+        zoneResults = allZones.filter(function (z) {
+            return z.toLowerCase().indexOf(q) >= 0 || (zoneCountries[z] || "").toLowerCase().indexOf(qc) >= 0
+        }).slice(0, 8)
     }
     function addZone(tz) {
         if (zones.some(function (z) { return z.tz === tz })) return
@@ -165,9 +173,18 @@ KCM.SimpleKCM {
 
     P5Support.DataSource {
         engine: "executable"
-        connectedSources: ["timedatectl list-timezones 2>/dev/null || (cd /usr/share/zoneinfo && find . -type f | sed 's|^\\./||' | grep '^[A-Z]' | sort)"]
+        // "zone<TAB>country" lines from the tz database first, then the plain zone list
+        connectedSources: ["cd /usr/share/zoneinfo 2>/dev/null && awk -F'\\t' 'NR==FNR { if ($0 !~ /^#/) n[$1] = $2; next } $0 !~ /^#/ { print $3 \"\\t\" n[$1] }' iso3166.tab zone.tab 2>/dev/null; timedatectl list-timezones 2>/dev/null || (cd /usr/share/zoneinfo && find . -type f | sed 's|^\\./||' | grep '^[A-Z]' | sort)"]
         onNewData: (source, data) => {
-            allZones = (data["stdout"] || "").split("\n").map(function (l) { return l.trim() }).filter(function (l) { return l !== "" })
+            var zones = [], countries = {}
+            ;(data["stdout"] || "").split("\n").forEach(function (l) {
+                var p = l.trim().split("\t")
+                if (p[0] === "") return
+                if (p.length > 1) countries[p[0]] = p[1]
+                else zones.push(p[0])
+            })
+            zoneCountries = countries
+            allZones = zones
             disconnectSource(source)
         }
     }
@@ -273,7 +290,12 @@ KCM.SimpleKCM {
                 QQC2.ComboBox {
                     id: cpuDisplay
                     Kirigami.FormData.label: i18n("Display:")
-                    model: [i18n("Chart"), i18n("Percentage"), i18n("Chart + percentage")]
+                    model: [i18n("Chart"), i18n("Value"), i18n("Chart + value")]
+                }
+                QQC2.ComboBox {
+                    id: cpuValue
+                    Kirigami.FormData.label: i18n("Value shows:")
+                    model: [i18n("Percentage"), i18n("Clock speed")]
                 }
                 QQC2.ComboBox {
                     id: cpuChart
@@ -289,7 +311,12 @@ KCM.SimpleKCM {
                 QQC2.ComboBox {
                     id: memDisplay
                     Kirigami.FormData.label: i18n("Display:")
-                    model: [i18n("Chart"), i18n("Percentage"), i18n("Chart + percentage")]
+                    model: [i18n("Chart"), i18n("Value"), i18n("Chart + value")]
+                }
+                QQC2.ComboBox {
+                    id: memValue
+                    Kirigami.FormData.label: i18n("Value shows:")
+                    model: [i18n("Percentage"), i18n("Used"), i18n("Available"), i18n("Swap used")]
                 }
                 PaletteBox { id: memColorBox; Kirigami.FormData.label: i18n("Color:") }
             }
@@ -352,7 +379,7 @@ KCM.SimpleKCM {
                 QQC2.ComboBox {
                     id: batValue
                     Kirigami.FormData.label: i18n("Value:")
-                    model: [i18n("Level"), i18n("Wattage"), i18n("Voltage")]
+                    model: [i18n("Level"), i18n("Wattage"), i18n("Voltage"), i18n("Time remaining")]
                 }
                 QQC2.ComboBox {
                     Kirigami.FormData.label: i18n("Device:")
@@ -406,14 +433,14 @@ KCM.SimpleKCM {
                     Kirigami.SearchField {
                         Layout.fillWidth: true
                         Layout.topMargin: Kirigami.Units.smallSpacing
-                        placeholderText: i18n("Add a zone, e.g. Tokyo…")
+                        placeholderText: i18n("Add a zone or country, e.g. Tokyo…")
                         onTextChanged: page.searchZones(text)
                     }
                     Repeater {
                         model: page.zoneResults
                         QQC2.ItemDelegate {
                             Layout.fillWidth: true
-                            text: modelData
+                            text: page.zoneCountries[modelData] ? modelData + "  ·  " + page.zoneCountries[modelData] : modelData
                             onClicked: page.addZone(modelData)
                         }
                     }

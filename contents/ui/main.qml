@@ -12,6 +12,7 @@ PlasmoidItem {
 
     readonly property int maxSamples: 60
     property real cpu: 0
+    property real cpuFreq: -1 // GHz, -1 when unavailable
     property real memUsed: 0
     property real memTotal: 1
     property real swapUsed: 0
@@ -24,6 +25,12 @@ PlasmoidItem {
     property real batLevel: -1
     property real batVolts: 0
     property real batWatts: 0
+    property real batSecs: -1
+    property var sysInfo: []
+    property string lanIp: ""
+    property string wanIp: ""
+    property string batModel: ""
+    property var disks: []
     property string batStatus: ""
     readonly property string batCharging: batStatus === "Charging" ? "⚡" : ""
     property double clockNow: Date.now()
@@ -69,10 +76,10 @@ PlasmoidItem {
         var pct = function (f) { return Math.round(f * 100) + "%" }
         switch (key) {
         case "cpu":
-            return { on: cfg.showCpu, label: "CPU", showLabel: cfg.cpuLabel, display: cfg.cpuDisplay, text: pct(cpu), scale: 1,
+            return { on: cfg.showCpu, label: "CPU", showLabel: cfg.cpuLabel, display: cfg.cpuDisplay, text: cfg.cpuValue === 1 && cpuFreq >= 0 ? cpuFreq.toFixed(1) + " GHz" : pct(cpu), scale: 1,
                      frac: cpu, frac2: -1, chart: cfg.cpuChart, hist: cpuHist, hist2: null, col: cfg.cpuColor, col2: "#000000" }
         case "mem":
-            return { on: cfg.showMem, label: "MEM", showLabel: cfg.memLabel, display: cfg.memDisplay, text: pct(memUsed / memTotal), scale: 1,
+            return { on: cfg.showMem, label: "MEM", showLabel: cfg.memLabel, display: cfg.memDisplay, text: memText(pct), scale: 1,
                      frac: memUsed / memTotal, frac2: -1, chart: cfg.barStyle, hist: memHist, hist2: null, col: cfg.memColor, col2: "#000000" }
         case "net":
             return { on: cfg.showNet, label: "NET", showLabel: cfg.netLabel, display: cfg.netDisplay,
@@ -87,12 +94,21 @@ PlasmoidItem {
                      frac: 0, frac2: -1, chart: 0, hist: null, hist2: null, col: "#000000", col2: "#000000" }
         case "bat":
             return { on: cfg.showBat && batLevel >= 0, label: "BAT", showLabel: cfg.batLabel, display: cfg.batDisplay,
-                     text: (cfg.batValue === 1 ? fmtWatts(batWatts) : cfg.batValue === 2 ? fmtVolts(batVolts) : Math.round(batLevel) + "%") + batCharging, scale: 1,
+                     text: (cfg.batValue === 1 ? fmtWatts(batWatts) : cfg.batValue === 2 ? fmtVolts(batVolts) : cfg.batValue === 3 ? fmtDuration(batSecs) : Math.round(batLevel) + "%") + batCharging, scale: 1,
                      frac: batLevel / 100, frac2: -1, chart: cfg.barStyle, hist: batHist, hist2: null, col: cfg.batColor, col2: "#000000" }
         default:
             return { on: cfg.showDiskPanel, label: "DISK", showLabel: cfg.diskLabel, display: cfg.diskDisplay, text: pct(diskUsed / diskTotal), scale: 1,
                      frac: diskUsed / diskTotal, frac2: -1, chart: cfg.barStyle, hist: diskHist, hist2: null, col: cfg.diskColor, col2: "#000000" }
         }
+    }
+
+    function memText(pct) {
+        switch (cfg.memValue) {
+        case 1: return fmtBytes(memUsed)
+        case 2: return fmtBytes(memTotal - memUsed)
+        case 3: return swapTotal > 0 ? fmtBytes(swapUsed) : "–"
+        }
+        return pct(memUsed / memTotal)
     }
 
     function fmtBytes(b) {
@@ -106,6 +122,11 @@ PlasmoidItem {
     }
     function fmtTemp(c) {
         return cfg.tempFahrenheit ? Math.round(c * 9 / 5 + 32) + "°F" : Math.round(c) + "°C"
+    }
+    function fmtDuration(s) {
+        if (s < 0) return "–"
+        var m = Math.round(s / 60)
+        return Math.floor(m / 60) + ":" + ("0" + m % 60).slice(-2)
     }
     function fmtWatts(w) { return w < 0 ? "–" : w.toFixed(1) + " W" }
     function fmtVolts(v) { return v < 0 ? "–" : v.toFixed(2) + " V" }
@@ -141,10 +162,16 @@ PlasmoidItem {
     }
 
     function parse(out) {
-        var t = []
+        var t = [], dl = []
         var now = Date.now()
         out.split("\n").forEach(function (line) {
             var p = line.trim().split(/\s+/)
+            if (p[0].indexOf("disks|") === 0) { var dk = line.trim().split("|")
+                var drv = dl.filter(function (d) { return d.id === dk[1] })[0]
+                if (!drv) { drv = { id: dk[1], name: dk[2], bytes: +dk[3], parts: [] }; dl.push(drv) }
+                drv.parts.push({ name: dk[4], used: +dk[5], total: +dk[6] })
+                return }
+            if (p[0].indexOf("sys|") === 0) { sysInfo = line.trim().substring(4).split("|"); return }
             switch (p[0]) {
             case "cpu":
                 var tot = +p[1], idle = +p[2]
@@ -177,17 +204,22 @@ PlasmoidItem {
                 }
                 prevNet = [rx, tx]; prevNetT = now
                 break
+            case "ip": lanIp = p[1] || ""; break
+            case "extip": wanIp = p[1] || ""; break
+            case "batmodel": batModel = p.slice(1).join(" "); break
             case "disk": diskUsed = +p[1]; diskTotal = +p[2]; break
             case "load": load = p[1] + "  " + p[2] + "  " + p[3]; break
             case "up": uptime = +p[1]; break
             case "temp": temp = p[1] / 1000; break
+            case "freq": cpuFreq = p[1] / 1e6; break
             case "bat":
-                batLevel = +p[1]; batVolts = p[2] / 1e6; batWatts = p[3] / 1e6; batStatus = p.slice(4).join(" ")
+                batLevel = +p[1]; batVolts = p[2] / 1e6; batWatts = p[3] / 1e6; batSecs = +p[4]; batStatus = p.slice(5).join(" ")
                 break
             case "top": t.push({ cpu: p[1], name: p.slice(2).join(" ") }); break
             }
         })
         tops = t
+        disks = dl
         peakRate = Math.max(1024 * 100, peakRate * 0.98, rxRate, txRate)
         cpuHist = push(cpuHist, cpu)
         memHist = push(memHist, memUsed / memTotal)
@@ -221,7 +253,7 @@ PlasmoidItem {
         id: exec
         engine: "executable"
         connectedSources: ["sh '" + root.script + "' '" + root.cfg.diskMount.replace(/'/g, "'\\''") + "' '" + root.cfg.tempSensor.replace(/'/g, "'\\''")
-                          + "' '" + root.cfg.batDevice.replace(/'/g, "'\\''") + "' '" + root.cfg.netInterface.replace(/'/g, "'\\''") + "'"]
+                          + "' '" + root.cfg.batDevice.replace(/'/g, "'\\''") + "' '" + root.cfg.netInterface.replace(/'/g, "'\\''") + "' " + (root.cfg.showExternalIp ? "1" : "0")]
         interval: root.cfg.updateInterval
         onNewData: (source, data) => { if (data["stdout"]) root.parse(data["stdout"]) }
     }
@@ -350,7 +382,7 @@ PlasmoidItem {
         RowLayout {
             id: strip
             anchors.centerIn: parent
-            spacing: Kirigami.Units.largeSpacing
+            spacing: root.cfg.itemGap
             Repeater {
                 model: root.order
                 RowLayout {
@@ -375,14 +407,15 @@ PlasmoidItem {
     fullRepresentation: PlasmaComponents.ScrollView {
         id: scroll
         Layout.preferredWidth: Kirigami.Units.gridUnit * 18
-        Layout.minimumHeight: Math.min(stack.implicitHeight + Kirigami.Units.smallSpacing * 2, Kirigami.Units.gridUnit * 20)
-        Layout.preferredHeight: stack.implicitHeight + Kirigami.Units.smallSpacing * 2
+        Layout.minimumHeight: stack.implicitHeight + Kirigami.Units.smallSpacing * 2 + Kirigami.Units.largeSpacing * 2
+        Layout.preferredHeight: stack.implicitHeight + Kirigami.Units.smallSpacing * 2 + Kirigami.Units.largeSpacing * 2
 
         ColumnLayout {
             id: stack
-            width: scroll.availableWidth - Kirigami.Units.smallSpacing * 2
-            x: Kirigami.Units.smallSpacing
-            spacing: Kirigami.Units.smallSpacing
+            width: scroll.availableWidth
+            x: 0
+            y: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.largeSpacing
 
             Section {
                 title: "CPU"
@@ -391,7 +424,7 @@ PlasmoidItem {
                 baseSize: root.cfg.popupFontSize
                 value: Math.round(root.cpu * 100) + "%"
                 history: root.cpuHist
-                subtitle: "Load  " + root.load + (root.temp >= 0 ? "      Temp  " + root.fmtTemp(root.temp) : "")
+                subtitle: "Load  " + root.load + (root.cpuFreq >= 0 ? "      Freq  " + root.cpuFreq.toFixed(2) + " GHz" : "") + (root.temp >= 0 ? "      Temp  " + root.fmtTemp(root.temp) : "")
                 // Per core / thread: 4 equal fixed-width cells per row, bar + percentage
                 GridLayout {
                     id: coreGrid
@@ -459,6 +492,7 @@ PlasmoidItem {
                 baseSize: root.cfg.popupFontSize
                 value: "↓ " + root.fmtRate(root.rxRate)
                 subtitle: "↑ " + root.fmtRate(root.txRate)
+                    + (root.lanIp !== "" ? "\nLocal  " + root.lanIp : "") + (root.wanIp !== "" ? (root.lanIp !== "" ? "      " : "\n") + "Public  " + root.wanIp : "")
                 history: root.rxHist
                 Spark {
                     Layout.fillWidth: true
@@ -469,12 +503,12 @@ PlasmoidItem {
             }
             Section {
                 visible: root.batLevel >= 0
-                title: "Battery"
+                title: "Battery" + (root.batModel !== "" ? "  " + root.batModel : "")
                 accent: root.cfg.batColor
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
                 value: Math.round(root.batLevel) + "%" + root.batCharging
-                subtitle: root.batStatus
+                subtitle: root.batStatus + (root.batSecs >= 0 ? "      " + root.fmtDuration(root.batSecs) + (root.batStatus === "Charging" ? " until full" : " remaining") : "")
                 LineChart {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 44
@@ -528,23 +562,117 @@ PlasmoidItem {
                     }
                 }
             }
+            Repeater {
+                model: root.cfg.showDisk ? root.disks : []
+                Section {
+                    id: driveCard
+                    required property var modelData
+                    readonly property real used: modelData.parts.reduce(function (a, q) { return a + q.used }, 0)
+                    readonly property real cap: Math.max(modelData.bytes, modelData.parts.reduce(function (a, q) { return a + q.total }, 0))
+                    readonly property var colors: [root.cfg.diskColor, "#ff9f0a", "#64d2ff", "#ff375f", "#ffd60a", "#5e5ce6"]
+                    title: "Disk  " + modelData.name
+                    accent: root.cfg.diskColor
+                    fontFamily: root.fontFam
+                    baseSize: root.cfg.popupFontSize
+                    value: Math.round(used / cap * 100) + "%"
+                    subtitle: root.fmtBytes(used) + " of " + root.fmtBytes(cap)
+                    // One bar per physical drive, a coloured segment per partition
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 6; radius: 3
+                        color: Qt.rgba(1, 1, 1, 0.1)
+                        Row {
+                            anchors.fill: parent
+                            spacing: 2
+                            Repeater {
+                                model: driveCard.modelData.parts
+                                Rectangle {
+                                    required property var modelData
+                                    required property int index
+                                    width: Math.max(2, (parent.width) * modelData.used / driveCard.cap)
+                                    height: parent.height; radius: 3
+                                    color: driveCard.colors[index % driveCard.colors.length]
+                                }
+                            }
+                        }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.largeSpacing
+                        Repeater {
+                            model: driveCard.modelData.parts
+                            RowLayout {
+                                required property var modelData
+                                required property int index
+                                spacing: 4
+                                Rectangle { Layout.preferredWidth: 8; Layout.preferredHeight: 8; radius: 4; color: driveCard.colors[index % driveCard.colors.length] }
+                                Text {
+                                    text: modelData.name + "  " + root.fmtBytes(modelData.used)
+                                    color: Kirigami.Theme.textColor; opacity: 0.65
+                                    font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.8
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Section {
-                visible: root.cfg.showDisk
-                title: "Disk  " + root.cfg.diskMount
-                accent: root.cfg.diskColor
+                visible: root.cfg.showSysInfo && root.sysInfo.length >= 6
+                title: "System"
+                accent: Kirigami.Theme.textColor
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
-                value: Math.round(root.diskUsed / root.diskTotal * 100) + "%"
-                fraction: root.diskUsed / root.diskTotal
-                subtitle: root.fmtBytes(root.diskUsed) + " of " + root.fmtBytes(root.diskTotal)
+                value: ""
+                subtitle: root.sysInfo.length < 6 ? "" : root.sysInfo[0].trim()
+                    + "\n" + root.sysInfo[1] + " · " + root.sysInfo[2] + " threads · " + root.fmtBytes(root.memTotal) + " RAM"
+                    + "\n" + root.sysInfo[3] + " · " + root.sysInfo[4] + " · " + root.sysInfo[5]
             }
             Text {
                 visible: root.cfg.showUptime
                 text: "Uptime  " + root.fmtUp(root.uptime)
-                color: Kirigami.Theme.textColor; opacity: 0.55
+                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.8)
                 font.family: root.fontFam
                 font.pointSize: root.cfg.popupFontSize * 0.85
                 Layout.alignment: Qt.AlignHCenter
+            }
+            ColumnLayout {
+                readonly property var meta: Plasmoid.metaData
+                Layout.alignment: Qt.AlignHCenter
+                Layout.bottomMargin: Kirigami.Units.largeSpacing
+                spacing: Kirigami.Units.smallSpacing
+                Text {
+                    text: parent.meta.name + " " + parent.meta.version + "  ·  " + parent.meta.license
+                    color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.8)
+                    font.family: root.fontFam
+                    font.pointSize: root.cfg.popupFontSize * 0.85
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: Kirigami.Units.largeSpacing
+                    Repeater {
+                        model: [
+                            { icon: "internet-services", text: "GitHub", url: Plasmoid.metaData.website },
+                            { icon: "tools-report-bug", text: "Report a bug", url: Plasmoid.metaData.bugReportUrl },
+                            { icon: "help-donate", text: "Buy me a coffee", url: "https://buymeacoffee.com/chinsta" }
+                        ]
+                        RowLayout {
+                            required property var modelData
+                            spacing: 4
+                            opacity: link.hovered ? 1 : 0.85
+                            Kirigami.Icon { source: modelData.icon; implicitWidth: 14; implicitHeight: 14; color: Kirigami.Theme.textColor }
+                            Text {
+                                text: modelData.text
+                                color: Kirigami.Theme.textColor
+                                font.family: root.fontFam
+                                font.pointSize: root.cfg.popupFontSize * 0.85
+                                font.underline: link.hovered
+                            }
+                            HoverHandler { id: link; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: Qt.openUrlExternally(modelData.url) }
+                        }
+                    }
+                }
             }
         }
     }

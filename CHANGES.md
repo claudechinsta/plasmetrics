@@ -1,5 +1,17 @@
 # Changes
 
+## 1.2.1
+
+- CPU: new clock speed readout. The popup shows the average frequency, and the panel can show it instead of the percentage
+- Memory and battery get a "Value shows" choice for the panel: memory can show percentage, used, available or swap; battery adds time remaining (also shown in the popup)
+- Popup: new System card (model, CPU, threads, RAM, OS, kernel, hostname)
+- Popup: disks are grouped by physical drive, named by model, with one colored bar segment per partition
+- Popup: battery card shows the battery model; network card shows your local and public IP. The public IP is looked up on api.ipify.org at most every 10 minutes and can be turned off in General
+- Popup: opens at full height without scrolling, square cards with more breathing room, and a footer with version and links
+- Display options now read Chart, Value, Chart + value
+- New Item gap setting in Appearance
+- World clock: search time zones by country as well as city
+
 ## 1.2.0
 
 - New world clock metric: add as many time zones as you like. Each shows a vertical code (up to 3 characters, emoji allowed, editable), the local time and the hour difference to you, for example `09:41 (-5h)`. 12 or 24-hour time. Also a card in the popup with the city, time and "+1 day" markers

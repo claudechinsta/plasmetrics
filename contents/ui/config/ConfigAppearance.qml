@@ -33,6 +33,7 @@ KCM.SimpleKCM {
     property string cfg_fontFamily
     property alias cfg_panelFontSize: panelSize.value
     property alias cfg_popupFontSize: popupSize.value
+    property alias cfg_itemGap: itemGap.value
     property alias cfg_fontBold: bold.checked
     property alias cfg_verticalLabels: vertLabels.checked
 
@@ -40,6 +41,7 @@ KCM.SimpleKCM {
     property string cfg_fontFamilyDefault
     property int cfg_panelFontSizeDefault
     property int cfg_popupFontSizeDefault
+    property int cfg_itemGapDefault
     property bool cfg_fontBoldDefault
     property bool cfg_verticalLabelsDefault
 
@@ -85,6 +87,7 @@ KCM.SimpleKCM {
         }
         QQC2.SpinBox { id: panelSize; Kirigami.FormData.label: i18n("Panel size (px):"); from: 6; to: 40 }
         QQC2.SpinBox { id: popupSize; Kirigami.FormData.label: i18n("Popup size (pt):"); from: 6; to: 24 }
+        QQC2.SpinBox { id: itemGap; Kirigami.FormData.label: i18n("Item gap (px):"); from: 0; to: 40 }
         QQC2.CheckBox { id: bold; text: i18n("Bold panel values") }
         QQC2.CheckBox { id: vertLabels; text: i18n("Vertical panel labels") }
 
