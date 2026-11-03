@@ -6,6 +6,7 @@
 
   <group name="General">
     <entry name="updateInterval" type="Int"><default>2000</default></entry>
+    <entry name="colorOverride" type="String"><default></default></entry>
     <entry name="barStyle" type="Int"><default>0</default></entry>
     <entry name="showDisk" type="Bool"><default>true</default></entry>
     <entry name="showSysInfo" type="Bool"><default>true</default></entry>
@@ -16,7 +17,7 @@
   </group>
 
   <group name="Metrics">
-    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,disk,bat,clock</default></entry>
+    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,gpu,disk,bat,clock</default></entry>
     <entry name="showCpu" type="Bool"><default>true</default></entry>
     <entry name="cpuLabel" type="Bool"><default>true</default></entry>
     <entry name="cpuDisplay" type="Int"><default>2</default></entry>
@@ -28,6 +29,11 @@
     <entry name="memValue" type="Int"><default>0</default></entry>
     <entry name="memDisplay" type="Int"><default>2</default></entry>
     <entry name="memColor" type="String"><default>#4cd964</default></entry>
+    <entry name="showGpu" type="Bool"><default>true</default></entry>
+    <entry name="gpuLabel" type="Bool"><default>true</default></entry>
+    <entry name="gpuDisplay" type="Int"><default>2</default></entry>
+    <entry name="gpuValue" type="Int"><default>0</default></entry>
+    <entry name="gpuColor" type="String"><default>#ff9f0a</default></entry>
     <entry name="showNet" type="Bool"><default>true</default></entry>
     <entry name="netLabel" type="Bool"><default>true</default></entry>
     <entry name="netDisplay" type="Int"><default>2</default></entry>

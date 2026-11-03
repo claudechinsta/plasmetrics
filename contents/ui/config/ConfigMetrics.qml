@@ -24,6 +24,11 @@ KCM.SimpleKCM {
     property alias cfg_memValue: memValue.currentIndex
     property alias cfg_memDisplay: memDisplay.currentIndex
     property alias cfg_memColor: memColorBox.colorString
+    property bool cfg_showGpu
+    property alias cfg_gpuLabel: gpuLabel.checked
+    property alias cfg_gpuDisplay: gpuDisplay.currentIndex
+    property alias cfg_gpuValue: gpuValue.currentIndex
+    property alias cfg_gpuColor: gpuColorBox.colorString
     property bool cfg_showNet
     property alias cfg_netLabel: netLabel.checked
     property alias cfg_netDisplay: netDisplay.currentIndex
@@ -60,6 +65,11 @@ KCM.SimpleKCM {
     property int cfg_memValueDefault
     property int cfg_memDisplayDefault
     property string cfg_memColorDefault
+    property bool cfg_showGpuDefault
+    property bool cfg_gpuLabelDefault
+    property int cfg_gpuDisplayDefault
+    property int cfg_gpuValueDefault
+    property string cfg_gpuColorDefault
     property bool cfg_showNetDefault
     property bool cfg_netLabelDefault
     property int cfg_netDisplayDefault
@@ -85,8 +95,8 @@ KCM.SimpleKCM {
     property int cfg_diskDisplayDefault
     property string cfg_diskColorDefault
 
-    readonly property var keys: ["cpu", "mem", "net", "temp", "bat", "clock", "disk"]
-    readonly property var titles: ({ cpu: i18n("CPU"), mem: i18n("Memory"), net: i18n("Network"), temp: i18n("Temperature"), bat: i18n("Battery"), clock: i18n("World clock"), disk: i18n("Disk") })
+    readonly property var keys: ["cpu", "mem", "net", "temp", "gpu", "bat", "clock", "disk"]
+    readonly property var titles: ({ cpu: i18n("CPU"), mem: i18n("Memory"), gpu: i18n("GPU"), net: i18n("Network"), temp: i18n("Temperature"), bat: i18n("Battery"), clock: i18n("World clock"), disk: i18n("Disk") })
     property string selected: "cpu"
     property var mounts: []
     readonly property var zones: Zones.parse(cfg_clockZones)
@@ -131,6 +141,7 @@ KCM.SimpleKCM {
         switch (k) {
         case "cpu": return cfg_showCpu
         case "mem": return cfg_showMem
+        case "gpu": return cfg_showGpu
         case "net": return cfg_showNet
         case "temp": return cfg_showTemp
         case "bat": return cfg_showBat
@@ -142,6 +153,7 @@ KCM.SimpleKCM {
         switch (k) {
         case "cpu": cfg_showCpu = v; break
         case "mem": cfg_showMem = v; break
+        case "gpu": cfg_showGpu = v; break
         case "net": cfg_showNet = v; break
         case "temp": cfg_showTemp = v; break
         case "bat": cfg_showBat = v; break
@@ -366,6 +378,28 @@ KCM.SimpleKCM {
                     onActivated: (i) => page.cfg_tempSensor = page.sensors[i].key
                 }
                 PaletteBox { id: tempColorBox; Kirigami.FormData.label: i18n("Color:") }
+            }
+
+            Kirigami.FormLayout {
+                Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("GPU") }
+                QQC2.CheckBox { id: gpuLabel; Kirigami.FormData.label: i18n("Label:"); text: i18n("Show label") }
+                QQC2.ComboBox {
+                    id: gpuDisplay
+                    Kirigami.FormData.label: i18n("Display:")
+                    model: [i18n("Chart"), i18n("Value"), i18n("Chart + value")]
+                }
+                QQC2.ComboBox {
+                    id: gpuValue
+                    Kirigami.FormData.label: i18n("Value:")
+                    model: [i18n("Usage"), i18n("Temperature")]
+                }
+                QQC2.Label {
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 18
+                    wrapMode: Text.WordWrap
+                    opacity: 0.7
+                    text: i18n("Picks the GPU in use automatically. Hidden from the panel while the driver reports no usage.")
+                }
+                PaletteBox { id: gpuColorBox; Kirigami.FormData.label: i18n("Color:") }
             }
 
             Kirigami.FormLayout {

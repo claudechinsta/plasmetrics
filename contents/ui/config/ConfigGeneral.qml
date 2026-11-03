@@ -7,6 +7,7 @@ import org.kde.kcmutils as KCM
 KCM.SimpleKCM {
     property alias cfg_updateInterval: interval.value
     property alias cfg_barStyle: barStyle.currentIndex
+    property alias cfg_colorOverride: colorOverride.colorString
     property alias cfg_showDisk: showDisk.checked
     property alias cfg_showUptime: showUptime.checked
     property alias cfg_showExternalIp: showExternalIp.checked
@@ -16,6 +17,7 @@ KCM.SimpleKCM {
 
     property int cfg_updateIntervalDefault
     property int cfg_barStyleDefault
+    property string cfg_colorOverrideDefault
     property bool cfg_showDiskDefault
     property bool cfg_showUptimeDefault
     property bool cfg_showExternalIpDefault
@@ -39,6 +41,12 @@ KCM.SimpleKCM {
             id: barStyle
             Kirigami.FormData.label: i18n("Chart style:")
             model: [i18n("Vertical bar"), i18n("History chart")]
+        }
+        PaletteBox {
+            id: colorOverride
+            allowNone: true
+            colorString: ""
+            Kirigami.FormData.label: i18n("Color for all charts:")
         }
 
         Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Popup") }

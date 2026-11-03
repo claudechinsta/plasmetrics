@@ -31,6 +31,16 @@ PlasmoidItem {
     property string wanIp: ""
     property string batModel: ""
     property var disks: []
+    property string gpuName: ""
+    property string gpuKind: ""
+    property string gpuDrv: ""
+    property string gpuState: ""
+    property real gpuUtil: -1
+    property real gpuVramUsed: -1
+    property real gpuVramTotal: -1
+    property real gpuTemp: -1
+    property real gpuPower: -1
+    property real gpuMhz: -1
     property string batStatus: ""
     readonly property string batCharging: batStatus === "Charging" ? "⚡" : ""
     property double clockNow: Date.now()
@@ -49,6 +59,7 @@ PlasmoidItem {
     property var batWattHist: Array(60).fill(-1)
     property var batVoltHist: Array(60).fill(-1)
     property var diskHist: Array(60).fill(0)
+    property var gpuHist: Array(60).fill(0)
     property real peakRate: 1024 * 100
     property var cores: []
     property var prevCores: null
@@ -65,7 +76,7 @@ PlasmoidItem {
     readonly property string script: Qt.resolvedUrl("../code/stats.sh").toString().replace("file://", "")
 
     readonly property var order: {
-        var keys = ["cpu", "mem", "net", "temp", "bat", "clock", "disk"], out = []
+        var keys = ["cpu", "mem", "net", "temp", "gpu", "bat", "clock", "disk"], out = []
         cfg.metricOrder.split(",").forEach(function (k) { if (keys.indexOf(k) >= 0 && out.indexOf(k) < 0) out.push(k) })
         keys.forEach(function (k) { if (out.indexOf(k) < 0) out.push(k) })
         return out
@@ -77,28 +88,32 @@ PlasmoidItem {
         switch (key) {
         case "cpu":
             return { on: cfg.showCpu, label: "CPU", showLabel: cfg.cpuLabel, display: cfg.cpuDisplay, text: cfg.cpuValue === 1 && cpuFreq >= 0 ? cpuFreq.toFixed(1) + " GHz" : pct(cpu), scale: 1,
-                     frac: cpu, frac2: -1, chart: cfg.cpuChart, hist: cpuHist, hist2: null, col: cfg.cpuColor, col2: "#000000" }
+                     frac: cpu, frac2: -1, chart: cfg.cpuChart, hist: cpuHist, hist2: null, col: root.tint(root.cfg.cpuColor), col2: "#000000" }
         case "mem":
             return { on: cfg.showMem, label: "MEM", showLabel: cfg.memLabel, display: cfg.memDisplay, text: memText(pct), scale: 1,
-                     frac: memUsed / memTotal, frac2: -1, chart: cfg.barStyle, hist: memHist, hist2: null, col: cfg.memColor, col2: "#000000" }
+                     frac: memUsed / memTotal, frac2: -1, chart: cfg.barStyle, hist: memHist, hist2: null, col: root.tint(root.cfg.memColor), col2: "#000000" }
+        case "gpu":
+            return { on: cfg.showGpu && gpuUtil >= 0, label: "GPU", showLabel: cfg.gpuLabel, display: cfg.gpuDisplay,
+                     text: cfg.gpuValue === 1 && gpuTemp >= 0 ? fmtTemp(gpuTemp / 1000) : Math.round(gpuUtil) + "%", scale: 1,
+                     frac: Math.max(0, gpuUtil) / 100, frac2: -1, chart: cfg.barStyle, hist: gpuHist, hist2: null, col: root.tint(root.cfg.gpuColor), col2: "#000000" }
         case "net":
             return { on: cfg.showNet, label: "NET", showLabel: cfg.netLabel, display: cfg.netDisplay,
                      text: "↓ " + fmtRate(rxRate) + "\n↑ " + fmtRate(txRate), scale: 0.8,
                      frac: rxRate / peakRate, frac2: txRate / peakRate, chart: cfg.barStyle, hist: rxHist, hist2: txHist,
-                     col: cfg.downColor, col2: cfg.upColor }
+                     col: root.tint(root.cfg.downColor), col2: root.tint(root.cfg.upColor) }
         case "temp":
             return { on: cfg.showTemp && temp >= 0, label: "TEMP", showLabel: cfg.tempLabel, display: cfg.tempDisplay, text: fmtTemp(temp), scale: 1,
-                     frac: temp / 100, frac2: -1, chart: cfg.barStyle, hist: tempHist, hist2: null, col: cfg.tempColor, col2: "#000000" }
+                     frac: temp / 100, frac2: -1, chart: cfg.barStyle, hist: tempHist, hist2: null, col: root.tint(root.cfg.tempColor), col2: "#000000" }
         case "clock":
             return { on: false, label: "", showLabel: false, display: 1, text: "", scale: 1,
                      frac: 0, frac2: -1, chart: 0, hist: null, hist2: null, col: "#000000", col2: "#000000" }
         case "bat":
             return { on: cfg.showBat && batLevel >= 0, label: "BAT", showLabel: cfg.batLabel, display: cfg.batDisplay,
                      text: (cfg.batValue === 1 ? fmtWatts(batWatts) : cfg.batValue === 2 ? fmtVolts(batVolts) : cfg.batValue === 3 ? fmtDuration(batSecs) : Math.round(batLevel) + "%") + batCharging, scale: 1,
-                     frac: batLevel / 100, frac2: -1, chart: cfg.barStyle, hist: batHist, hist2: null, col: cfg.batColor, col2: "#000000" }
+                     frac: batLevel / 100, frac2: -1, chart: cfg.barStyle, hist: batHist, hist2: null, col: root.tint(root.cfg.batColor), col2: "#000000" }
         default:
             return { on: cfg.showDiskPanel, label: "DISK", showLabel: cfg.diskLabel, display: cfg.diskDisplay, text: pct(diskUsed / diskTotal), scale: 1,
-                     frac: diskUsed / diskTotal, frac2: -1, chart: cfg.barStyle, hist: diskHist, hist2: null, col: cfg.diskColor, col2: "#000000" }
+                     frac: diskUsed / diskTotal, frac2: -1, chart: cfg.barStyle, hist: diskHist, hist2: null, col: root.tint(root.cfg.diskColor), col2: "#000000" }
         }
     }
 
@@ -128,8 +143,27 @@ PlasmoidItem {
         var m = Math.round(s / 60)
         return Math.floor(m / 60) + ":" + ("0" + m % 60).slice(-2)
     }
+    function gpuSubtitle() {
+        switch (gpuState) {
+        case "asleep": return "Discrete GPU is powered down"
+        case "nodriver": return "No driver loaded"
+        case "nostats":
+            return gpuDrv === "nvidia" ? "Usage needs nvidia-smi (the nvidia-utils package)"
+                 : gpuDrv === "nouveau" || gpuDrv === "radeon" ? "The " + gpuDrv + " driver does not report usage"
+                 : "This driver does not report usage"
+        }
+        var parts = [gpuKind === "discrete" ? "Discrete" : "Integrated"]
+        if (gpuVramTotal > 0) parts.push("VRAM  " + fmtBytes(gpuVramUsed) + " / " + fmtBytes(gpuVramTotal))
+        if (gpuTemp >= 0) parts.push(fmtTemp(gpuTemp / 1000))
+        if (gpuPower >= 0) parts.push(fmtWatts(gpuPower / 1e6))
+        if (gpuMhz > 0) parts.push(gpuMhz + " MHz")
+        if (gpuDrv === "i915" || gpuDrv === "xe") parts.push("usage estimated")
+        return parts.join("      ")
+    }
     function fmtWatts(w) { return w < 0 ? "–" : w.toFixed(1) + " W" }
     function fmtVolts(v) { return v < 0 ? "–" : v.toFixed(2) + " V" }
+    // The General setting, when picked, replaces every metric's own color
+    function tint(c) { return cfg.colorOverride !== "" ? cfg.colorOverride : c }
     // Same thresholds as the panel core grid
     function usageColor(f) { return f < 0.2 ? "#30d158" : f < 0.7 ? "#ff9f0a" : "#ff453a" }
     // "09:41 (-5h)" for a zone, "–" until its offset is known
@@ -170,6 +204,10 @@ PlasmoidItem {
                 var drv = dl.filter(function (d) { return d.id === dk[1] })[0]
                 if (!drv) { drv = { id: dk[1], name: dk[2], bytes: +dk[3], parts: [] }; dl.push(drv) }
                 drv.parts.push({ name: dk[4], used: +dk[5], total: +dk[6] })
+                return }
+            if (p[0].indexOf("gpu|") === 0) { var g = line.trim().split("|")
+                gpuName = g[1]; gpuKind = g[2]; gpuDrv = g[3]; gpuUtil = +g[4]; gpuVramUsed = +g[5]; gpuVramTotal = +g[6]
+                gpuTemp = +g[7]; gpuPower = +g[8]; gpuMhz = +g[9]; gpuState = g[10]
                 return }
             if (p[0].indexOf("sys|") === 0) { sysInfo = line.trim().substring(4).split("|"); return }
             switch (p[0]) {
@@ -230,6 +268,7 @@ PlasmoidItem {
         batWattHist = push(batWattHist, batLevel >= 0 ? batWatts : -1)
         batVoltHist = push(batVoltHist, batLevel >= 0 ? batVolts : -1)
         diskHist = push(diskHist, diskUsed / diskTotal)
+        gpuHist = push(gpuHist, Math.max(0, gpuUtil) / 100)
     }
 
     Timer {
@@ -419,7 +458,7 @@ PlasmoidItem {
 
             Section {
                 title: "CPU"
-                accent: root.cfg.cpuColor
+                accent: root.tint(root.cfg.cpuColor)
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
                 value: Math.round(root.cpu * 100) + "%"
@@ -476,8 +515,18 @@ PlasmoidItem {
                 }
             }
             Section {
+                visible: root.gpuState !== ""
+                title: "GPU  " + root.gpuName
+                accent: root.tint(root.cfg.gpuColor)
+                fontFamily: root.fontFam
+                baseSize: root.cfg.popupFontSize
+                value: root.gpuUtil >= 0 ? Math.round(root.gpuUtil) + "%" : "–"
+                history: root.gpuUtil >= 0 ? root.gpuHist : null
+                subtitle: root.gpuSubtitle()
+            }
+            Section {
                 title: "Memory"
-                accent: root.cfg.memColor
+                accent: root.tint(root.cfg.memColor)
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
                 value: Math.round(root.memUsed / root.memTotal * 100) + "%"
@@ -487,7 +536,7 @@ PlasmoidItem {
             }
             Section {
                 title: "Network"
-                accent: root.cfg.downColor
+                accent: root.tint(root.cfg.downColor)
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
                 value: "↓ " + root.fmtRate(root.rxRate)
@@ -498,13 +547,13 @@ PlasmoidItem {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 20
                     values: root.txHist
-                    color: root.cfg.upColor
+                    color: root.tint(root.cfg.upColor)
                 }
             }
             Section {
                 visible: root.batLevel >= 0
                 title: "Battery" + (root.batModel !== "" ? "  " + root.batModel : "")
-                accent: root.cfg.batColor
+                accent: root.tint(root.cfg.batColor)
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
                 value: Math.round(root.batLevel) + "%" + root.batCharging
@@ -544,7 +593,7 @@ PlasmoidItem {
             Section {
                 visible: root.cfg.showClock && root.clockZones.length > 0
                 title: "World clock"
-                accent: root.cfg.clockColor
+                accent: root.tint(root.cfg.clockColor)
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
                 value: ""
@@ -569,9 +618,9 @@ PlasmoidItem {
                     required property var modelData
                     readonly property real used: modelData.parts.reduce(function (a, q) { return a + q.used }, 0)
                     readonly property real cap: Math.max(modelData.bytes, modelData.parts.reduce(function (a, q) { return a + q.total }, 0))
-                    readonly property var colors: [root.cfg.diskColor, "#ff9f0a", "#64d2ff", "#ff375f", "#ffd60a", "#5e5ce6"]
+                    readonly property var colors: [root.tint(root.cfg.diskColor), "#ff9f0a", "#64d2ff", "#ff375f", "#ffd60a", "#5e5ce6"]
                     title: "Disk  " + modelData.name
-                    accent: root.cfg.diskColor
+                    accent: root.tint(root.cfg.diskColor)
                     fontFamily: root.fontFam
                     baseSize: root.cfg.popupFontSize
                     value: Math.round(used / cap * 100) + "%"

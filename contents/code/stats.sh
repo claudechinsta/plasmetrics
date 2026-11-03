@@ -1,6 +1,7 @@
 #!/bin/sh
 # One line per metric; parsed in main.qml
-head -n1 /proc/stat | awk '{print "cpu", $2+$3+$4+$5+$6+$7+$8, $5+$6}'
+# printf %.0f, not %d / print: mawk (Debian, Ubuntu) caps those at 2^31, which jiffy and byte counters pass quickly
+head -n1 /proc/stat | awk '{printf "cpu %.0f %.0f\n", $2+$3+$4+$5+$6+$7+$8, $5+$6}'
 awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}/SwapTotal/{st=$2}/SwapFree/{sf=$2}END{print "mem", t, a, st, sf}' /proc/meminfo
 # $4 = interface name; empty means the one carrying the default route (lowest metric),
 # or every interface except lo when there is no default route
@@ -11,7 +12,7 @@ awk -v i="$iface" 'NR>2 {
   c = index($0, ":"); name = substr($0, 1, c - 1); gsub(/ /, "", name)
   split(substr($0, c + 1), f, " ")
   if (i == "" ? name != "lo" : name == i) { rx += f[1]; tx += f[9] }
-}END{print "net", rx+0, tx+0, (i==""?"-":i)}' /proc/net/dev
+}END{printf "net %.0f %.0f %s\n", rx, tx, (i==""?"-":i)}' /proc/net/dev
 echo "ip $(ip -4 -o addr show ${iface:+dev $iface} scope global 2>/dev/null | awk '{print $4; exit}' | cut -d/ -f1)"
 # $5 = 1 looks up the public address (api.ipify.org), at most every 10 minutes, in the background
 if [ "$5" = 1 ]; then
@@ -54,9 +55,79 @@ for b in /sys/class/power_supply/${3:-*}; do
         printf "bat %d %d %d %d %s\n", c, (v==""?-1:v), (p==""?-1:p), t, (s==""?"Unknown":s)}'
   break
 done
-awk '/^cpu[0-9]/{printf "%s %d %d ", $1, $2+$3+$4+$5+$6+$7+$8, $5+$6; n++}END{if(n) print ""}' /proc/stat | sed 's/^/cores /'
+awk '/^cpu[0-9]/{printf "%s %.0f %.0f ", $1, $2+$3+$4+$5+$6+$7+$8, $5+$6; n++}END{if(n) print ""}' /proc/stat | sed 's/^/cores /'
 # Average current CPU clock in kHz; absent when cpufreq isn't exposed
 cat /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq 2>/dev/null | awk '{s+=$1;n++}END{if(n) printf "freq %d\n", s/n}'
+# One line for the GPU in use: "gpu|name|kind|driver|util %|vram used|vram total|temp mC|power uW|MHz|state"
+# Walks PCI display devices (not /sys/class/drm), so a card with no driver still shows up. Unknown numbers are -1.
+# state: ok, asleep (powered-down discrete GPU, left alone so it isn't woken), nodriver, nostats (driver exposes no usage)
+# A GPU that is awake and discrete wins, then the integrated / boot GPU, then a sleeping discrete one.
+now=$(awk '{printf "%d", $1 * 1000}' /proc/uptime)
+smi=
+for p in /sys/bus/pci/devices/*; do
+  case $(cat $p/class 2>/dev/null) in 0x03*) ;; *) continue;; esac
+  slot=$(basename $p); drv=; [ -e $p/driver ] && drv=$(basename "$(readlink -f $p/driver)")
+  vendor=$(cat $p/vendor 2>/dev/null); rs=$(cat $p/power/runtime_status 2>/dev/null)
+  util=-1 vu=-1 vt=-1 temp=-1 pw=-1 mhz=-1 state=ok kind=integrated
+  name=$(lspci -s "${slot#0000:}" -mm 2>/dev/null | awk -F'"' '{v=$4; n=$6
+    if (v ~ /Advanced Micro/) v="AMD"; else if (v ~ /NVIDIA/) v="NVIDIA"; else sub(/ (Corporation|Corp|Inc).*|, Inc.*/, "", v)
+    if (match(n, /\[.*\]/)) n=substr(n, RSTART + 1, RLENGTH - 2)
+    print (index(n, v) == 1 ? "" : v " ") n}')
+  if [ -z "$name" ]; then
+    case $vendor in 0x8086) name=Intel;; 0x10de) name=NVIDIA;; 0x1002) name=AMD;; *) name=GPU;; esac
+    name="$name $(cat $p/device 2>/dev/null)"
+  fi
+  for h in $p/hwmon/hwmon*; do
+    [ -r $h/temp1_input ] && temp=$(cat $h/temp1_input)
+    [ -r $h/power1_average ] && pw=$(cat $h/power1_average)
+    [ -r $h/power1_input ] && pw=$(cat $h/power1_input)
+    [ -r $h/freq1_input ] && mhz=$(( $(cat $h/freq1_input) / 1000000 ))
+    break
+  done
+  case $drv in
+    amdgpu|radeon)
+      [ -r $p/gpu_busy_percent ] && util=$(cat $p/gpu_busy_percent)
+      [ -r $p/mem_info_vram_total ] && vt=$(cat $p/mem_info_vram_total) vu=$(cat $p/mem_info_vram_used)
+      # APUs only carve a slice of system RAM out as "VRAM"
+      [ "$vt" -ge 3221225472 ] && kind=discrete
+      [ "$drv" = radeon ] && state=nostats;;
+    i915|xe)
+      # No usage counter without root: use the share of time the GPU is not in its RC6 power-saving state
+      n=0 rc6=0
+      for f in $p/drm/card*/gt/gt*/rc6_residency_ms $p/tile*/gt*/gtidle/idle_residency_ms; do
+        [ -r $f ] && rc6=$((rc6 + $(cat $f))) n=$((n + 1))
+      done
+      if [ $n -gt 0 ]; then
+        c=${XDG_RUNTIME_DIR:-/tmp}/plasmetrics-gpu-$slot
+        if [ -r $c ] && read -r t0 r0 <$c && [ "$now" -gt "$t0" ]; then
+          util=$(awk -v t=$((now - t0)) -v r=$((rc6 - r0)) -v n=$n 'BEGIN{u=100*(1-r/(t*n)); print (u<0?0:u>100?100:int(u+.5))}')
+        fi
+        echo "$now $rc6" >$c
+      else state=nostats; fi
+      for f in $p/drm/card*/gt/gt0/rps_act_freq_mhz $p/drm/card*/gt_act_freq_mhz $p/tile0/gt0/freq0/act_freq; do
+        [ -r $f ] && mhz=$(cat $f) && break
+      done
+      [ -e $p/tile0/vram0 ] || [ -e $p/lmem_total_bytes ] && kind=discrete;;
+    nvidia)
+      kind=discrete
+      if [ "$rs" != suspended ] && command -v nvidia-smi >/dev/null 2>&1; then
+        [ -z "$smi" ] && smi=$(timeout 2 nvidia-smi --query-gpu=pci.bus_id,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks.gr --format=csv,noheader,nounits 2>/dev/null)
+        v=$(echo "$smi" | awk -F', *' -v s="${slot#0000:}" 'index($1, s) {
+          for (i = 2; i <= 7; i++) if ($i !~ /^[0-9.]+$/) $i = -1
+          printf "%d %.0f %.0f %.0f %.0f %d", $2, ($3 < 0 ? -1 : $3 * 1048576), ($4 < 0 ? -1 : $4 * 1048576), ($5 < 0 ? -1 : $5 * 1000), ($6 < 0 ? -1 : $6 * 1000000), $7 }')
+        [ -n "$v" ] && read -r util vu vt temp pw mhz <<EOF
+$v
+EOF
+      else state=nostats; fi;;
+    "") state=nodriver;;
+    *) state=nostats;;
+  esac
+  rank=1
+  if [ $kind = discrete ]; then
+    rank=0; [ "$rs" = suspended ] && rank=2 state=asleep
+  fi
+  echo "$rank|gpu|$name|$kind|$drv|$util|$vu|$vt|$temp|$pw|$mhz|$state"
+done | sort -t'|' -k1,1n | head -n1 | cut -d'|' -f2-
 # Static machine info, "|" separated: model, CPU, OS, kernel, hostname
 d=/sys/class/dmi/id
 echo "sys|$(cat $d/sys_vendor 2>/dev/null) $(cat $d/product_name 2>/dev/null)|$(awk -F': ' '/model name/{print $2; exit}' /proc/cpuinfo | sed 's/([RTM]*)//g; s/ CPU//; s/  */ /g')|$(nproc)|$(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME")|$(uname -sr)|$(uname -n)"
