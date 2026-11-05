@@ -307,7 +307,7 @@ KCM.SimpleKCM {
                 QQC2.ComboBox {
                     id: cpuValue
                     Kirigami.FormData.label: i18n("Value shows:")
-                    model: [i18n("Percentage"), i18n("Clock speed")]
+                    model: [i18n("Percentage"), i18n("Clock speed"), i18n("Temperature")]
                 }
                 QQC2.ComboBox {
                     id: cpuChart
@@ -391,7 +391,7 @@ KCM.SimpleKCM {
                 QQC2.ComboBox {
                     id: gpuValue
                     Kirigami.FormData.label: i18n("Value:")
-                    model: [i18n("Usage"), i18n("Temperature")]
+                    model: [i18n("Usage"), i18n("Temperature"), i18n("Clock speed")]
                 }
                 QQC2.Label {
                     Layout.maximumWidth: Kirigami.Units.gridUnit * 18

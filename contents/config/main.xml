@@ -17,7 +17,7 @@
   </group>
 
   <group name="Metrics">
-    <entry name="metricOrder" type="String"><default>cpu,mem,net,temp,gpu,disk,bat,clock</default></entry>
+    <entry name="metricOrder" type="String"><default>net,cpu,gpu,mem,temp,disk,bat,clock</default></entry>
     <entry name="showCpu" type="Bool"><default>true</default></entry>
     <entry name="cpuLabel" type="Bool"><default>true</default></entry>
     <entry name="cpuDisplay" type="Int"><default>2</default></entry>
@@ -36,7 +36,7 @@
     <entry name="gpuColor" type="String"><default>#ff9f0a</default></entry>
     <entry name="showNet" type="Bool"><default>true</default></entry>
     <entry name="netLabel" type="Bool"><default>true</default></entry>
-    <entry name="netDisplay" type="Int"><default>2</default></entry>
+    <entry name="netDisplay" type="Int"><default>1</default></entry>
     <entry name="netInterface" type="String"><default></default></entry>
     <entry name="downColor" type="String"><default>#ff9f0a</default></entry>
     <entry name="upColor" type="String"><default>#ff453a</default></entry>

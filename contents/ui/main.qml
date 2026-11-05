@@ -41,6 +41,7 @@ PlasmoidItem {
     property real gpuTemp: -1
     property real gpuPower: -1
     property real gpuMhz: -1
+    property string gpuTempSrc: ""
     property string batStatus: ""
     readonly property string batCharging: batStatus === "Charging" ? "⚡" : ""
     property double clockNow: Date.now()
@@ -87,14 +88,14 @@ PlasmoidItem {
         var pct = function (f) { return Math.round(f * 100) + "%" }
         switch (key) {
         case "cpu":
-            return { on: cfg.showCpu, label: "CPU", showLabel: cfg.cpuLabel, display: cfg.cpuDisplay, text: cfg.cpuValue === 1 && cpuFreq >= 0 ? cpuFreq.toFixed(1) + " GHz" : pct(cpu), scale: 1,
+            return { on: cfg.showCpu, label: "CPU", showLabel: cfg.cpuLabel, display: cfg.cpuDisplay, text: cfg.cpuValue === 1 ? (cpuFreq >= 0 ? cpuFreq.toFixed(1) + " GHz" : "-") : cfg.cpuValue === 2 ? (temp >= 0 ? fmtTemp(temp) : "-") : pct(cpu), scale: 1,
                      frac: cpu, frac2: -1, chart: cfg.cpuChart, hist: cpuHist, hist2: null, col: root.tint(root.cfg.cpuColor), col2: "#000000" }
         case "mem":
             return { on: cfg.showMem, label: "MEM", showLabel: cfg.memLabel, display: cfg.memDisplay, text: memText(pct), scale: 1,
                      frac: memUsed / memTotal, frac2: -1, chart: cfg.barStyle, hist: memHist, hist2: null, col: root.tint(root.cfg.memColor), col2: "#000000" }
         case "gpu":
             return { on: cfg.showGpu && gpuUtil >= 0, label: "GPU", showLabel: cfg.gpuLabel, display: cfg.gpuDisplay,
-                     text: cfg.gpuValue === 1 && gpuTemp >= 0 ? fmtTemp(gpuTemp / 1000) : Math.round(gpuUtil) + "%", scale: 1,
+                     text: cfg.gpuValue === 1 ? (gpuTemp >= 0 ? fmtTemp(gpuTemp / 1000) : "-") : cfg.gpuValue === 2 ? fmtMhz(gpuMhz) : Math.round(gpuUtil) + "%", scale: 1,
                      frac: Math.max(0, gpuUtil) / 100, frac2: -1, chart: cfg.barStyle, hist: gpuHist, hist2: null, col: root.tint(root.cfg.gpuColor), col2: "#000000" }
         case "net":
             return { on: cfg.showNet, label: "NET", showLabel: cfg.netLabel, display: cfg.netDisplay,
@@ -154,12 +155,13 @@ PlasmoidItem {
         }
         var parts = [gpuKind === "discrete" ? "Discrete" : "Integrated"]
         if (gpuVramTotal > 0) parts.push("VRAM  " + fmtBytes(gpuVramUsed) + " / " + fmtBytes(gpuVramTotal))
-        if (gpuTemp >= 0) parts.push(fmtTemp(gpuTemp / 1000))
+        if (gpuTemp >= 0) parts.push(fmtTemp(gpuTemp / 1000) + (gpuTempSrc === "package" ? " (CPU package)" : ""))
         if (gpuPower >= 0) parts.push(fmtWatts(gpuPower / 1e6))
-        if (gpuMhz > 0) parts.push(gpuMhz + " MHz")
+        if (gpuMhz > 0) parts.push(fmtMhz(gpuMhz))
         if (gpuDrv === "i915" || gpuDrv === "xe") parts.push("usage estimated")
         return parts.join("      ")
     }
+    function fmtMhz(m) { return m < 0 ? "-" : m >= 1000 ? (m / 1000).toFixed(2) + " GHz" : Math.round(m) + " MHz" }
     function fmtWatts(w) { return w < 0 ? "–" : w.toFixed(1) + " W" }
     function fmtVolts(v) { return v < 0 ? "–" : v.toFixed(2) + " V" }
     // The General setting, when picked, replaces every metric's own color
@@ -207,7 +209,7 @@ PlasmoidItem {
                 return }
             if (p[0].indexOf("gpu|") === 0) { var g = line.trim().split("|")
                 gpuName = g[1]; gpuKind = g[2]; gpuDrv = g[3]; gpuUtil = +g[4]; gpuVramUsed = +g[5]; gpuVramTotal = +g[6]
-                gpuTemp = +g[7]; gpuPower = +g[8]; gpuMhz = +g[9]; gpuState = g[10]
+                gpuTemp = +g[7]; gpuPower = +g[8]; gpuMhz = +g[9]; gpuState = g[10]; gpuTempSrc = g[11] || "gpu"
                 return }
             if (p[0].indexOf("sys|") === 0) { sysInfo = line.trim().substring(4).split("|"); return }
             switch (p[0]) {
@@ -445,7 +447,10 @@ PlasmoidItem {
     // ---- Popup: one card per metric ----
     fullRepresentation: PlasmaComponents.ScrollView {
         id: scroll
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+        // Fixed, not in grid units: those grow with the system font, which made the popup far wider on some machines
+        Layout.preferredWidth: 324
+        Layout.minimumWidth: 324
+        Layout.maximumWidth: 324
         Layout.minimumHeight: stack.implicitHeight + Kirigami.Units.smallSpacing * 2 + Kirigami.Units.largeSpacing * 2
         Layout.preferredHeight: stack.implicitHeight + Kirigami.Units.smallSpacing * 2 + Kirigami.Units.largeSpacing * 2
 
@@ -672,9 +677,49 @@ PlasmoidItem {
                 fontFamily: root.fontFam
                 baseSize: root.cfg.popupFontSize
                 value: ""
-                subtitle: root.sysInfo.length < 6 ? "" : root.sysInfo[0].trim()
-                    + "\n" + root.sysInfo[1] + " · " + root.sysInfo[2] + " threads · " + root.fmtBytes(root.memTotal) + " RAM"
-                    + "\n" + root.sysInfo[3] + " · " + root.sysInfo[4] + " · " + root.sysInfo[5]
+                // One titled row per fact
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    rowSpacing: 2
+                    TextMetrics { id: sysLabelW; text: "Hostname"; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.85 }
+                    Repeater {
+                        model: root.sysInfo.length < 6 ? [] : [
+                            ["Model", root.sysInfo[0].trim()],
+                            ["CPU", root.sysInfo[1] + " · " + root.sysInfo[2] + " threads"],
+                            ["Memory", root.fmtBytes(root.memTotal)],
+                            ["OS", root.sysInfo[3]],
+                            ["Kernel", root.sysInfo[4]],
+                            ["Hostname", root.sysInfo[5]]
+                        ]
+                        delegate: Item {
+                            // Label and value share a row; Item keeps the two grid cells in step
+                            required property var modelData
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            implicitHeight: valueText.implicitHeight
+                            Text {
+                                width: sysLabelW.width
+                                text: modelData[0]
+                                color: Kirigami.Theme.textColor
+                                opacity: 0.55
+                                font.family: root.fontFam
+                                font.pointSize: root.cfg.popupFontSize * 0.85
+                            }
+                            Text {
+                                id: valueText
+                                x: sysLabelW.width + Kirigami.Units.largeSpacing
+                                width: parent.width - x
+                                text: modelData[1]
+                                wrapMode: Text.WordWrap
+                                color: Kirigami.Theme.textColor
+                                font.family: root.fontFam
+                                font.pointSize: root.cfg.popupFontSize * 0.85
+                            }
+                        }
+                    }
+                }
             }
             Text {
                 visible: root.cfg.showUptime

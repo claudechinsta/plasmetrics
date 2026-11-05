@@ -1,5 +1,17 @@
 # Changes
 
+## 1.3.0
+
+- New GPU metric: usage, temperature or clock speed in the panel, plus a popup card. Works with Intel, AMD and NVIDIA (NVIDIA needs `nvidia-smi`), shows the GPU name when a driver reports nothing, and leaves a sleeping discrete GPU alone so it is not woken up. Intel usage is an estimate
+- CPU value can now show temperature, and GPU value can show temperature or clock speed. When a reading is not available the panel shows `-`
+- New "Color for all charts" setting in General to override every metric color
+- Popup: the System card is now a titled list (Model, CPU, Memory, OS, Kernel, Hostname)
+- Popup: fixed width, no longer grows with the system font size
+- Changed: new installs start with the order network, CPU, GPU, memory, temp, disk, battery, world clock, and the network panel item shows its value without a chart. Existing settings are kept
+- Changed: CPU clock speed shows `-` when unavailable instead of the percentage
+- Fixed: CPU and network readings on systems whose awk is mawk (Debian, Ubuntu)
+- After updating, restart the Plasma shell or log out and in so the new version loads
+
 ## 1.2.1
 
 - CPU: new clock speed readout. The popup shows the average frequency, and the panel can show it instead of the percentage

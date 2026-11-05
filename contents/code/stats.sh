@@ -58,7 +58,7 @@ done
 awk '/^cpu[0-9]/{printf "%s %.0f %.0f ", $1, $2+$3+$4+$5+$6+$7+$8, $5+$6; n++}END{if(n) print ""}' /proc/stat | sed 's/^/cores /'
 # Average current CPU clock in kHz; absent when cpufreq isn't exposed
 cat /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq 2>/dev/null | awk '{s+=$1;n++}END{if(n) printf "freq %d\n", s/n}'
-# One line for the GPU in use: "gpu|name|kind|driver|util %|vram used|vram total|temp mC|power uW|MHz|state"
+# One line for the GPU in use: "gpu|name|kind|driver|util %|vram used|vram total|temp mC|power uW|MHz|state|temp source (gpu or package)"
 # Walks PCI display devices (not /sys/class/drm), so a card with no driver still shows up. Unknown numbers are -1.
 # state: ok, asleep (powered-down discrete GPU, left alone so it isn't woken), nodriver, nostats (driver exposes no usage)
 # A GPU that is awake and discrete wins, then the integrated / boot GPU, then a sleeping discrete one.
@@ -68,7 +68,7 @@ for p in /sys/bus/pci/devices/*; do
   case $(cat $p/class 2>/dev/null) in 0x03*) ;; *) continue;; esac
   slot=$(basename $p); drv=; [ -e $p/driver ] && drv=$(basename "$(readlink -f $p/driver)")
   vendor=$(cat $p/vendor 2>/dev/null); rs=$(cat $p/power/runtime_status 2>/dev/null)
-  util=-1 vu=-1 vt=-1 temp=-1 pw=-1 mhz=-1 state=ok kind=integrated
+  util=-1 vu=-1 vt=-1 temp=-1 pw=-1 mhz=-1 state=ok kind=integrated tsrc=gpu
   name=$(lspci -s "${slot#0000:}" -mm 2>/dev/null | awk -F'"' '{v=$4; n=$6
     if (v ~ /Advanced Micro/) v="AMD"; else if (v ~ /NVIDIA/) v="NVIDIA"; else sub(/ (Corporation|Corp|Inc).*|, Inc.*/, "", v)
     if (match(n, /\[.*\]/)) n=substr(n, RSTART + 1, RLENGTH - 2)
@@ -107,7 +107,15 @@ for p in /sys/bus/pci/devices/*; do
       for f in $p/drm/card*/gt/gt0/rps_act_freq_mhz $p/drm/card*/gt_act_freq_mhz $p/tile0/gt0/freq0/act_freq; do
         [ -r $f ] && mhz=$(cat $f) && break
       done
-      [ -e $p/tile0/vram0 ] || [ -e $p/lmem_total_bytes ] && kind=discrete;;
+      [ -e $p/tile0/vram0 ] || [ -e $p/lmem_total_bytes ] && kind=discrete
+      # Intel iGPUs have no sensor of their own: they share the CPU package, so report that one
+      if [ "$temp" -lt 0 ] && [ $kind = integrated ]; then
+        for h in /sys/class/hwmon/hwmon*; do
+          case $(cat $h/name 2>/dev/null) in coretemp|k10temp|zenpower|cpu_thermal)
+            [ -r $h/temp1_input ] && temp=$(cat $h/temp1_input) tsrc=package && break;;
+          esac
+        done
+      fi;;
     nvidia)
       kind=discrete
       if [ "$rs" != suspended ] && command -v nvidia-smi >/dev/null 2>&1; then
@@ -126,7 +134,7 @@ EOF
   if [ $kind = discrete ]; then
     rank=0; [ "$rs" = suspended ] && rank=2 state=asleep
   fi
-  echo "$rank|gpu|$name|$kind|$drv|$util|$vu|$vt|$temp|$pw|$mhz|$state"
+  echo "$rank|gpu|$name|$kind|$drv|$util|$vu|$vt|$temp|$pw|$mhz|$state|$tsrc"
 done | sort -t'|' -k1,1n | head -n1 | cut -d'|' -f2-
 # Static machine info, "|" separated: model, CPU, OS, kernel, hostname
 d=/sys/class/dmi/id
