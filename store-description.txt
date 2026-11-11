@@ -2,7 +2,7 @@ Know what your machine is doing at a glance.
 
 Plasmetrics is a compact system monitor for the Plasma 6 panel. Each metric shows as a label, a slim vertical bar and a value, so you can read your system's state without opening anything. Click it for a popup with history graphs, per-core load, GPU and clock speed, every drive grouped by physical disk, battery and network details, top processes, system info and uptime.
 
-Metrics: CPU, memory, GPU, network, temperature, battery (level, wattage, voltage), world clock and disk.
+Metrics: CPU, memory, GPU, network, temperature, battery (level, wattage, voltage), world clock, disk and, optionally, your Claude and Codex plan usage.
 
 Make it yours
 - Show only the metrics you care about, and drag them into your preferred order
@@ -13,4 +13,4 @@ Make it yours
 - Pick colors from a fixed palette, or one color for all charts, set your font and sizes, switch °C/°F
 - Vertical or horizontal panel labels
 
-Light and simple. No background services. It reads /proc and /sys every couple of seconds. The only network request is an optional public IP lookup (api.ipify.org, at most every 10 minutes), which you can turn off.
+Light and simple. No background services. It reads /proc and /sys every couple of seconds. Network requests are optional: a public IP lookup (api.ipify.org, at most every 10 minutes, can be turned off) and the Claude and Codex usage metrics (beta, both off by default). When you turn one on, Plasmetrics reads the login Claude Code keeps in ~/.claude/.credentials.json, or the Codex CLI keeps in ~/.codex/auth.json, and asks api.anthropic.com or chatgpt.com for your plan usage every 1 to 10 minutes (your choice, 1 by default). A login is only sent to its own service, never stored, changed or shown. Nothing else is sent anywhere.

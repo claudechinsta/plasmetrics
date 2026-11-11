@@ -1,5 +1,12 @@
 # Changes
 
+## 1.4.0
+
+- New Claude usage and Codex usage metrics (beta, both off by default, turn them on under Metrics): your plan's 5-hour session and weekly usage as two bars with their own percentages in the panel (CLD and CDX), and a popup card per plan with reset countdowns. They read the login Claude Code keeps in `~/.claude/.credentials.json` and the one the Codex CLI keeps in `~/.codex/auth.json`, so there is nothing to set up beyond having signed in to the tool once. A login is only sent to its own service (api.anthropic.com, chatgpt.com), at most once per refresh interval, and is never stored or changed. Each metric stays hidden when you are not signed in, and shows the last reading while the tool's login is out of date
+- Claude and Codex usage get an "Official" color (Claude orange, Codex periwinkle), their default, in the color list. The panel label (CLD, CDX) uses the chosen color
+- New "Refresh every" setting in General for Claude and Codex usage: 1 (default), 3, 5 or 10 minutes. After a "too many requests" answer from a service, it is left alone for 5 minutes
+- After updating, restart the Plasma shell or log out and in so the new version loads
+
 ## 1.3.0
 
 - New GPU metric: usage, temperature or clock speed in the panel, plus a popup card. Works with Intel, AMD and NVIDIA (NVIDIA needs `nvidia-smi`), shows the GPU name when a driver reports nothing, and leaves a sleeping discrete GPU alone so it is not woken up. Intel usage is an estimate

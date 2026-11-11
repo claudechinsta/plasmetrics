@@ -53,6 +53,12 @@ KCM.SimpleKCM {
     property alias cfg_diskLabel: diskLabel.checked
     property alias cfg_diskDisplay: diskDisplay.currentIndex
     property alias cfg_diskColor: diskColorBox.colorString
+    property bool cfg_showClaude
+    property alias cfg_claudeLabel: claudeLabel.checked
+    property alias cfg_claudeColor: claudeColorBox.colorString
+    property bool cfg_showCodex
+    property alias cfg_codexLabel: codexLabel.checked
+    property alias cfg_codexColor: codexColorBox.colorString
 
     property bool cfg_showCpuDefault
     property bool cfg_cpuLabelDefault
@@ -94,9 +100,15 @@ KCM.SimpleKCM {
     property bool cfg_diskLabelDefault
     property int cfg_diskDisplayDefault
     property string cfg_diskColorDefault
+    property bool cfg_showClaudeDefault
+    property bool cfg_claudeLabelDefault
+    property string cfg_claudeColorDefault
+    property bool cfg_showCodexDefault
+    property bool cfg_codexLabelDefault
+    property string cfg_codexColorDefault
 
-    readonly property var keys: ["cpu", "mem", "net", "temp", "gpu", "bat", "clock", "disk"]
-    readonly property var titles: ({ cpu: i18n("CPU"), mem: i18n("Memory"), gpu: i18n("GPU"), net: i18n("Network"), temp: i18n("Temperature"), bat: i18n("Battery"), clock: i18n("World clock"), disk: i18n("Disk") })
+    readonly property var keys: ["cpu", "mem", "net", "temp", "gpu", "bat", "clock", "disk", "claude", "codex"]
+    readonly property var titles: ({ cpu: i18n("CPU"), mem: i18n("Memory"), gpu: i18n("GPU"), net: i18n("Network"), temp: i18n("Temperature"), bat: i18n("Battery"), clock: i18n("World clock"), disk: i18n("Disk"), claude: i18n("Claude usage"), codex: i18n("Codex usage") })
     property string selected: "cpu"
     property var mounts: []
     readonly property var zones: Zones.parse(cfg_clockZones)
@@ -146,6 +158,8 @@ KCM.SimpleKCM {
         case "temp": return cfg_showTemp
         case "bat": return cfg_showBat
         case "clock": return cfg_showClock
+        case "claude": return cfg_showClaude
+        case "codex": return cfg_showCodex
         default: return cfg_showDiskPanel
         }
     }
@@ -158,6 +172,8 @@ KCM.SimpleKCM {
         case "temp": cfg_showTemp = v; break
         case "bat": cfg_showBat = v; break
         case "clock": cfg_showClock = v; break
+        case "claude": cfg_showClaude = v; break
+        case "codex": cfg_showCodex = v; break
         default: cfg_showDiskPanel = v
         }
     }
@@ -262,6 +278,7 @@ KCM.SimpleKCM {
                             opacity: page.isOn(modelData) ? 1 : 0.55
                             Layout.fillWidth: true
                         }
+                        BetaTag { visible: modelData === "claude" || modelData === "codex"; opacity: page.isOn(modelData) ? 1 : 0.55 }
                     }
                 }
             }
@@ -501,6 +518,60 @@ KCM.SimpleKCM {
                         return -1
                     }
                     onActivated: (i) => page.cfg_diskMount = page.mounts[i].path
+                }
+            }
+
+            Kirigami.FormLayout {
+                Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Claude usage") }
+                QQC2.CheckBox { id: claudeLabel; Kirigami.FormData.label: i18n("Label:"); text: i18n("Show label") }
+                PaletteBox { id: claudeColorBox; officialColor: "#d97757"; Kirigami.FormData.label: i18n("Color:") }
+                ColumnLayout {
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 18
+                    spacing: Kirigami.Units.smallSpacing
+                    RowLayout {
+                        spacing: Kirigami.Units.smallSpacing
+                        BetaTag {}
+                        QQC2.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: i18n("Your Claude 5-hour and weekly limits.") }
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: i18n("Uses the login Claude Code already saved on this computer, so there is nothing to set up. Stays hidden until you are signed in.")
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        opacity: 0.6
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        text: i18n("Reads ~/.claude/.credentials.json and asks api.anthropic.com. Your login goes only to Anthropic and is never stored or changed. This is not a public API, so it may change.")
+                    }
+                }
+            }
+
+            Kirigami.FormLayout {
+                Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Codex usage") }
+                QQC2.CheckBox { id: codexLabel; Kirigami.FormData.label: i18n("Label:"); text: i18n("Show label") }
+                PaletteBox { id: codexColorBox; officialColor: "#757bef"; Kirigami.FormData.label: i18n("Color:") }
+                ColumnLayout {
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 18
+                    spacing: Kirigami.Units.smallSpacing
+                    RowLayout {
+                        spacing: Kirigami.Units.smallSpacing
+                        BetaTag {}
+                        QQC2.Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: i18n("Your Codex 5-hour and weekly limits.") }
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: i18n("Uses the login the Codex CLI already saved on this computer, so there is nothing to set up. Stays hidden until you are signed in.")
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        opacity: 0.6
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        text: i18n("Reads ~/.codex/auth.json and asks chatgpt.com. Your login goes only to OpenAI and is never stored or changed. This is not a public API, so it may change.")
+                    }
                 }
             }
         }

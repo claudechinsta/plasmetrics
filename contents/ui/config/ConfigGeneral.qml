@@ -14,6 +14,7 @@ KCM.SimpleKCM {
     property alias cfg_showSysInfo: showSysInfo.checked
     property alias cfg_tempFahrenheit: fahrenheit.checked
     property alias cfg_topProcesses: topProcs.value
+    property int cfg_usageIntervalMinutes
 
     property int cfg_updateIntervalDefault
     property int cfg_barStyleDefault
@@ -24,6 +25,7 @@ KCM.SimpleKCM {
     property bool cfg_showSysInfoDefault
     property bool cfg_tempFahrenheitDefault
     property int cfg_topProcessesDefault
+    property int cfg_usageIntervalMinutesDefault
 
     Kirigami.FormLayout {
         QQC2.SpinBox {
@@ -47,6 +49,15 @@ KCM.SimpleKCM {
             allowNone: true
             colorString: ""
             Kirigami.FormData.label: i18n("Color for all charts:")
+        }
+
+        Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Claude and Codex usage") }
+        QQC2.ComboBox {
+            readonly property var minutes: [1, 3, 5, 10]
+            Kirigami.FormData.label: i18n("Refresh every:")
+            model: minutes.map(function (m) { return i18n("%1 min", m) })
+            currentIndex: Math.max(0, minutes.indexOf(cfg_usageIntervalMinutes))
+            onActivated: (i) => cfg_usageIntervalMinutes = minutes[i]
         }
 
         Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Popup") }

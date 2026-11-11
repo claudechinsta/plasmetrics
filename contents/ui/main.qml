@@ -61,6 +61,14 @@ PlasmoidItem {
     property var batVoltHist: Array(60).fill(-1)
     property var diskHist: Array(60).fill(0)
     property var gpuHist: Array(60).fill(0)
+    // Last good reading of a plan: { plan, rows: [{ name, pct, reset (ms) }] }, null until there is one.
+    // The feed state is the script's answer: ok, none, expired, ...
+    property var claude: null
+    property string claudeState: ""
+    property double claudeAt: 0
+    property var codex: null
+    property string codexState: ""
+    property double codexAt: 0
     property real peakRate: 1024 * 100
     property var cores: []
     property var prevCores: null
@@ -75,9 +83,15 @@ PlasmoidItem {
 
     readonly property string clockScript: Qt.resolvedUrl("../code/clock.sh").toString().replace("file://", "")
     readonly property string script: Qt.resolvedUrl("../code/stats.sh").toString().replace("file://", "")
+    // Plan usage refresh: 1, 3, 5 or 10 minutes (anything else is repaired to 1); answers are reused for half of it
+    readonly property int usageMinutes: [1, 3, 5, 10].indexOf(cfg.usageIntervalMinutes) >= 0 ? cfg.usageIntervalMinutes : 1
+    readonly property int usageIntervalMs: usageMinutes * 60000
+    readonly property int usageCacheSecs: usageMinutes * 30
+    readonly property string codexScript: Qt.resolvedUrl("../code/codex.sh").toString().replace("file://", "")
+    readonly property string claudeScript: Qt.resolvedUrl("../code/claude.sh").toString().replace("file://", "")
 
     readonly property var order: {
-        var keys = ["cpu", "mem", "net", "temp", "gpu", "bat", "clock", "disk"], out = []
+        var keys = ["cpu", "mem", "net", "temp", "gpu", "bat", "clock", "disk", "claude", "codex"], out = []
         cfg.metricOrder.split(",").forEach(function (k) { if (keys.indexOf(k) >= 0 && out.indexOf(k) < 0) out.push(k) })
         keys.forEach(function (k) { if (out.indexOf(k) < 0) out.push(k) })
         return out
@@ -105,6 +119,10 @@ PlasmoidItem {
         case "temp":
             return { on: cfg.showTemp && temp >= 0, label: "TEMP", showLabel: cfg.tempLabel, display: cfg.tempDisplay, text: fmtTemp(temp), scale: 1,
                      frac: temp / 100, frac2: -1, chart: cfg.barStyle, hist: tempHist, hist2: null, col: root.tint(root.cfg.tempColor), col2: "#000000" }
+        case "claude":
+            return usageMetric(cfg.showClaude, claude, "CLD", cfg.claudeLabel, brand(cfg.claudeColor, "#d97757"))
+        case "codex":
+            return usageMetric(cfg.showCodex, codex, "CDX", cfg.codexLabel, brand(cfg.codexColor, "#757bef"))
         case "clock":
             return { on: false, label: "", showLabel: false, display: 1, text: "", scale: 1,
                      frac: 0, frac2: -1, chart: 0, hist: null, hist2: null, col: "#000000", col2: "#000000" }
@@ -116,6 +134,87 @@ PlasmoidItem {
             return { on: cfg.showDiskPanel, label: "DISK", showLabel: cfg.diskLabel, display: cfg.diskDisplay, text: pct(diskUsed / diskTotal), scale: 1,
                      frac: diskUsed / diskTotal, frac2: -1, chart: cfg.barStyle, hist: diskHist, hist2: null, col: root.tint(root.cfg.diskColor), col2: "#000000" }
         }
+    }
+
+    // Panel data of a plan: a bar and a value for the session and for the week
+    // "official" stands for the service's own color
+    function brand(c, official) { return c === "official" ? official : c }
+    function usageMetric(show, u, label, showLabel, color) {
+        return { on: show && u !== null, label: label, showLabel: showLabel,
+                 display: 2, text: "", scale: 1, frac: 0, frac2: -1, chart: 0, hist: null, hist2: null,
+                 usage: u ? u.rows.slice(0, 2).map(function (r) { return usagePct(r) }) : [],
+                 col: root.tint(color), col2: Qt.alpha(root.tint(color), 0.55) }
+    }
+    // A window whose reset time has passed starts again from zero
+    function usagePct(w) {
+        if (!w) return 0
+        return w.reset > 0 && w.reset <= Date.now() ? 0 : Math.max(0, Math.min(100, w.pct))
+    }
+    function fmtReset(ms) {
+        var m = Math.round((ms - Date.now()) / 60000)
+        if (m <= 0) return "now"
+        var d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60)
+        return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + (m % 60) + "m" : m + "m"
+    }
+    // Shown under the card while the latest answer is not a good one
+    function usageNote(feed, at, who) {
+        if (feed === "ok") return ""
+        var n = Math.round((Date.now() - at) / 60000)
+        return "Showing the last reading" + (n > 0 ? " from " + n + " min ago" : "")
+            + (feed === "expired" ? " — " + who + " renews its login when you use it" : "")
+    }
+    function windowName(seconds, fallback) {
+        return seconds === 18000 ? "Session (5 h)" : seconds === 604800 ? "Weekly" : seconds === 2592000 ? "Monthly"
+             : seconds > 0 ? Math.round(seconds / 3600) + " h" : fallback
+    }
+    function usagePlan(name) { return name ? name.charAt(0).toUpperCase() + name.slice(1) : "" }
+    // The script prints "<vendor> <state>", then (Claude only) "plan <name>", then the JSON
+    function splitFeed(out, vendor) {
+        var lines = out.split("\n"), state = (lines[0] || "").replace(vendor + " ", "").trim(), plan = ""
+        var rest = 1
+        if ((lines[1] || "").indexOf("plan ") === 0) { plan = lines[1].substring(5).trim(); rest = 2 }
+        return { state: state, plan: plan, body: lines.slice(rest).join("\n") }
+    }
+    function parseClaude(out) {
+        var f = splitFeed(out, "claude")
+        claudeState = f.state
+        if (f.state !== "ok") {
+            if (f.state === "none" || f.state === "noscope" || f.state === "nocurl") claude = null
+            return
+        }
+        var d
+        try { d = JSON.parse(f.body) } catch (e) { return }
+        var win = function (w, name) {
+            if (!w || typeof w.utilization !== "number") return null
+            // "2026-11-11T18:30:00.581123+00:00": Date.parse wants at most milliseconds
+            var t = w.resets_at ? Date.parse(String(w.resets_at).replace(/(\.\d{3})\d+/, "$1")) : NaN
+            return { name: name, pct: w.utilization, reset: isNaN(t) ? 0 : t }
+        }
+        var rows = [win(d.five_hour, "Session (5 h)"), win(d.seven_day, "Weekly"), win(d.seven_day_sonnet, "Weekly Sonnet"), win(d.seven_day_opus, "Weekly Opus")]
+            .filter(function (r) { return r })
+        if (rows.length === 0) return
+        claude = { plan: usagePlan(f.plan), rows: rows }
+        claudeAt = Date.now()
+    }
+    function parseCodex(out) {
+        var f = splitFeed(out, "codex")
+        codexState = f.state
+        if (f.state !== "ok") {
+            if (f.state === "none" || f.state === "nocurl") codex = null
+            return
+        }
+        var d
+        try { d = JSON.parse(f.body) } catch (e) { return }
+        var rl = d.rate_limit || {}
+        var win = function (w) {
+            if (!w || typeof w.used_percent !== "number") return null
+            var t = w.reset_at > 0 ? w.reset_at * 1000 : w.reset_after_seconds >= 0 ? Date.now() + w.reset_after_seconds * 1000 : 0
+            return { name: windowName(w.limit_window_seconds, "Usage"), pct: w.used_percent, reset: t }
+        }
+        var rows = [win(rl.primary_window), win(rl.secondary_window)].filter(function (r) { return r })
+        if (rows.length === 0) return
+        codex = { plan: usagePlan(d.plan_type), rows: rows }
+        codexAt = Date.now()
     }
 
     function memText(pct) {
@@ -290,6 +389,20 @@ PlasmoidItem {
         onNewData: (source, data) => { if (data["stdout"]) root.parseClock(data["stdout"]) }
     }
 
+    // Only polled when switched on; the scripts answer from a short cache, so this is cheap
+    P5Support.DataSource {
+        engine: "executable"
+        connectedSources: root.cfg.showClaude ? ["sh '" + root.claudeScript + "' " + root.usageCacheSecs] : []
+        interval: root.usageIntervalMs
+        onNewData: (source, data) => { if (data["stdout"]) root.parseClaude(data["stdout"]) }
+    }
+    P5Support.DataSource {
+        engine: "executable"
+        connectedSources: root.cfg.showCodex ? ["sh '" + root.codexScript + "' " + root.usageCacheSecs] : []
+        interval: root.usageIntervalMs
+        onNewData: (source, data) => { if (data["stdout"]) root.parseCodex(data["stdout"]) }
+    }
+
     P5Support.DataSource {
         id: exec
         engine: "executable"
@@ -420,6 +533,51 @@ PlasmoidItem {
             }
         }
 
+        // AI usage: label, then a bar with its own percentage for the session and for the week
+        component UsageRows: RowLayout {
+            id: usageRows
+            property string label
+            property bool showLabel: true
+            property var values: []
+            property color col
+            property color col2
+            spacing: 6
+            Item {
+                visible: usageRows.showLabel
+                implicitWidth: root.cfg.verticalLabels ? usageLabel.implicitHeight : usageLabel.implicitWidth
+                implicitHeight: root.cfg.verticalLabels ? usageLabel.implicitWidth : usageLabel.implicitHeight
+                Text {
+                    id: usageLabel
+                    anchors.centerIn: parent
+                    rotation: root.cfg.verticalLabels ? -90 : 0
+                    text: usageRows.label
+                    color: usageRows.col   // the label takes the metric's color
+                    opacity: 1
+                    font.family: root.fontFam
+                    font.pixelSize: Math.max(6, root.px * 0.8)
+                    font.bold: true
+                }
+            }
+            Repeater {
+                model: usageRows.values
+                RowLayout {
+                    spacing: 3
+                    VBar {
+                        Layout.preferredHeight: Math.round(root.px * 1.8)
+                        frac: modelData / 100
+                        color: index === 0 ? usageRows.col : usageRows.col2
+                    }
+                    Text {
+                        text: Math.round(modelData) + "%"
+                        color: Kirigami.Theme.textColor
+                        font.family: root.fontFam
+                        font.pixelSize: root.px
+                        font.weight: root.cfg.fontBold ? Font.DemiBold : Font.Normal
+                    }
+                }
+            }
+        }
+
         RowLayout {
             id: strip
             anchors.centerIn: parent
@@ -431,7 +589,7 @@ PlasmoidItem {
                     visible: modelData === "clock" ? root.cfg.showClock && root.clockZones.length > 0 : d.on
                     readonly property var d: root.metricData(modelData)
                     Metric {
-                        visible: modelData !== "clock"
+                        visible: modelData !== "clock" && d.usage === undefined
                         showLabel: d.showLabel; display: d.display
                         label: d.label; valueText: d.text; valueScale: d.scale
                         chart: d.chart; cores: modelData === "cpu" ? root.cores : []
@@ -439,6 +597,55 @@ PlasmoidItem {
                         col: d.col; col2: d.col2
                     }
                     ClockRows { visible: modelData === "clock" }
+                    UsageRows {
+                        visible: d.usage !== undefined
+                        label: d.label; showLabel: d.showLabel; values: d.usage || []
+                        col: d.col; col2: d.col2
+                    }
+                }
+            }
+        }
+    }
+
+    // Popup card of a plan: one bar per usage window
+    component UsageCard: Section {
+        id: uc
+        property var usage: null
+        property string feed: ""
+        property double at: 0
+        property string vendor
+        property string renewer
+        title: vendor + (usage && usage.plan !== "" ? "  " + usage.plan : "")
+        fontFamily: root.fontFam
+        baseSize: root.cfg.popupFontSize
+        value: usage ? Math.round(root.usagePct(usage.rows[0])) + "%" : ""
+        subtitle: root.usageNote(feed, at, renewer)
+        Repeater {
+            model: uc.usage ? uc.usage.rows : []
+            ColumnLayout {
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: 2
+                readonly property real pct: root.usagePct(modelData)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: modelData.name; Layout.fillWidth: true; color: Kirigami.Theme.textColor; opacity: 0.7; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.85 }
+                    Text {
+                        visible: modelData.reset > Date.now()
+                        text: "resets in " + root.fmtReset(modelData.reset)
+                        color: Kirigami.Theme.textColor; opacity: 0.55; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.8
+                    }
+                    Text { text: Math.round(parent.parent.pct) + "%"; Layout.preferredWidth: 38; horizontalAlignment: Text.AlignRight; color: Kirigami.Theme.textColor; font.family: root.fontFam; font.pointSize: root.cfg.popupFontSize * 0.9; font.weight: Font.DemiBold }
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6; radius: 3
+                    color: Qt.rgba(1, 1, 1, 0.1)
+                    Rectangle {
+                        width: parent.width * parent.parent.pct / 100
+                        height: parent.height; radius: 3
+                        color: root.usageColor(parent.parent.pct / 100)
+                    }
                 }
             }
         }
@@ -554,6 +761,18 @@ PlasmoidItem {
                     values: root.txHist
                     color: root.tint(root.cfg.upColor)
                 }
+            }
+            UsageCard {
+                visible: root.cfg.showClaude && root.claude !== null
+                vendor: "Claude"; renewer: "Claude Code"
+                usage: root.claude; feed: root.claudeState; at: root.claudeAt
+                accent: root.tint(root.brand(root.cfg.claudeColor, "#d97757"))
+            }
+            UsageCard {
+                visible: root.cfg.showCodex && root.codex !== null
+                vendor: "Codex"; renewer: "Codex"
+                usage: root.codex; feed: root.codexState; at: root.codexAt
+                accent: root.tint(root.brand(root.cfg.codexColor, "#757bef"))
             }
             Section {
                 visible: root.batLevel >= 0
